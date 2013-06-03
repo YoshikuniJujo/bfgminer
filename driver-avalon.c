@@ -309,7 +309,7 @@ static int avalon_write(int fd, char *buf, ssize_t len)
 		fd_set wd;
 
 		timeout.tv_sec = 0;
-		timeout.tv_usec = 1000;
+		timeout.tv_usec = 100000;
 		FD_ZERO(&wd);
 		FD_SET(fd, &wd);
 		ret = select(fd + 1, NULL, &wd, NULL, &timeout);
@@ -339,7 +339,7 @@ static int avalon_read(int fd, char *buf, ssize_t len)
 		fd_set rd;
 
 		timeout.tv_sec = 0;
-		timeout.tv_usec = 1000;
+		timeout.tv_usec = 100000;
 		FD_ZERO(&rd);
 		FD_SET((SOCKETTYPE)fd, &rd);
 		ret = select(fd + 1, &rd, NULL, NULL, &timeout);
@@ -378,6 +378,23 @@ static void avalon_clear_readbuf(int fd)
 	} while (ret > 0);
 }
 
+/* Wait until the avalon says it's ready to receive a write, or 2 seconds has
+ * elapsed, whichever comes first. The status is updated by the ftdi device
+ * every 40ms. Returns true if the avalon is ready. */
+static bool avalon_wait_write(int fd)
+{
+	int i = 0;
+	bool ret;
+
+	do {
+		ret = avalon_buffer_full(fd);
+		if (ret)
+			nmsleep(50);
+	} while (ret == true && i++ < 40);
+
+	return !ret;
+}
+
 static void avalon_idle(struct cgpu_info *avalon, int fd)
 {
 	struct avalon_info *info = avalon->device_data;
@@ -388,7 +405,7 @@ static void avalon_idle(struct cgpu_info *avalon, int fd)
 		int ret;
 
 		if (unlikely(avalon_buffer_full(fd))) {
-			applog(LOG_WARNING, "Avalon buffer full in avalon_idle");
+			applog(LOG_WARNING, "Avalon buffer full in avalon_idle after %d tasks", i);
 			break;
 		}
 		avalon_init_task(&at, 0, 0, info->fan_pwm,
@@ -410,6 +427,11 @@ static int avalon_reset(struct cgpu_info *avalon, int fd)
 	uint8_t *buf;
 	int ret, i = 0;
 	struct timespec p;
+
+	if (!avalon_wait_write(fd)) {
+		applog(LOG_WARNING, "Avalon not ready for writes in avalon_reset");
+		return 1;
+	}
 
 	/* Reset once, then send command to go idle */
 	ret = avalon_write(fd, "ad", 2);
@@ -640,8 +662,6 @@ static bool avalon_detect_one(const char *devpath)
 	info->temp_old = 0;
 	info->frequency = frequency;
 
-	avalon->device_fd = -1;
-
 	ret = avalon_reset(avalon, fd);
 	if (ret) {
 		; /* FIXME: I think IT IS avalon and wait on reset;
@@ -649,7 +669,6 @@ static bool avalon_detect_one(const char *devpath)
 		   * return false; */
 	}
 
-	avalon_close(fd);
 	return true;
 }
 
@@ -658,32 +677,9 @@ static inline void avalon_detect()
 	serial_detect(&avalon_drv, avalon_detect_one);
 }
 
-static void __avalon_init(struct cgpu_info *avalon)
-{
-	applog(LOG_INFO, "Avalon: Opened on %s", avalon->device_path);
-}
-
 static void avalon_init(struct cgpu_info *avalon)
 {
-	struct avalon_info *info = avalon->device_data;
-	int fd, ret;
-
-	avalon->device_fd = -1;
-	fd = avalon_open(avalon->device_path, info->baud);
-	if (unlikely(fd == -1)) {
-		applog(LOG_ERR, "Avalon: Failed to open on %s",
-		       avalon->device_path);
-		return;
-	}
-
-	ret = avalon_reset(avalon, fd);
-	if (ret) {
-		avalon_close(fd);
-		return;
-	}
-
-	avalon->device_fd = fd;
-	__avalon_init(avalon);
+	applog(LOG_INFO, "Avalon: Opened on %s", avalon->device_path);
 }
 
 static bool avalon_prepare(struct thr_info *thr)
@@ -697,10 +693,8 @@ static bool avalon_prepare(struct thr_info *thr)
 			       AVALON_ARRAY_SIZE);
 	if (!avalon->works)
 		quit(1, "Failed to calloc avalon works in avalon_prepare");
-	if (avalon->device_fd == -1)
-		avalon_init(avalon);
-	else
-		__avalon_init(avalon);
+
+	avalon_init(avalon);
 
 	cgtime(&now);
 	get_datestamp(avalon->init, &now);
@@ -846,15 +840,6 @@ static int64_t avalon_scanhash(struct thr_info *thr)
 	info = avalon->device_data;
 	avalon_get_work_count = info->miner_count;
 
-	if (unlikely(avalon->device_fd == -1)) {
-		if (!avalon_prepare(thr)) {
-			applog(LOG_ERR, "AVA%i: Comms error(open)",
-			       avalon->device_id);
-			dev_error(avalon, REASON_DEV_COMMS_ERROR);
-			/* fail the device if the reopen attempt fails */
-			return -1;
-		}
-	}
 	fd = avalon->device_fd;
 #ifndef WIN32
 	tcflush(fd, TCOFLUSH);
@@ -873,12 +858,11 @@ static int64_t avalon_scanhash(struct thr_info *thr)
 			     (ret == AVA_SEND_BUFFER_EMPTY &&
 			      (i + 1 == end_count) &&
 			      first_try))) {
-			do_avalon_close(thr);
 			applog(LOG_ERR, "AVA%i: Comms error(buffer)",
 			       avalon->device_id);
 			dev_error(avalon, REASON_DEV_COMMS_ERROR);
+			avalon_reset(avalon, fd);
 			first_try = 0;
-			avalon_init(avalon);
 			return 0;	/* This should never happen */
 		}
 		if (ret == AVA_SEND_BUFFER_EMPTY && (i + 1 == end_count)) {
@@ -911,10 +895,10 @@ static int64_t avalon_scanhash(struct thr_info *thr)
 
 		ret = avalon_get_result(fd, &ar, thr, &tv_finish);
 		if (unlikely(ret == AVA_GETS_ERROR)) {
-			do_avalon_close(thr);
 			applog(LOG_ERR,
 			       "AVA%i: Comms error(read)", avalon->device_id);
 			dev_error(avalon, REASON_DEV_COMMS_ERROR);
+			avalon_reset(avalon, fd);
 			return 0;
 		}
 		if (unlikely(ret == AVA_GETS_RESTART))
@@ -958,12 +942,11 @@ static int64_t avalon_scanhash(struct thr_info *thr)
 		/* Look for all invalid results, or consecutive failure
 		 * to generate any results suggesting the FPGA
 		 * controller has screwed up. */
-		do_avalon_close(thr);
 		applog(LOG_ERR,
 			"AVA%i: FPGA controller messed up, %d wrong results",
 			avalon->device_id, result_wrong);
 		dev_error(avalon, REASON_DEV_COMMS_ERROR);
-		avalon_init(avalon);
+		avalon_reset(avalon, fd);
 		return 0;
 	}
 
