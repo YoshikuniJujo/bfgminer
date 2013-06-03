@@ -107,21 +107,19 @@ struct avalon_info {
 	pthread_mutex_t qlock;
 	pthread_cond_t qcond;
 	int nonces;
+
+	bool idle;
 };
 
 #define AVALON_WRITE_SIZE (sizeof(struct avalon_task))
 #define AVALON_READ_SIZE (sizeof(struct avalon_result))
-#define AVALON_ARRAY_SIZE 4
+#define AVALON_ARRAY_SIZE 3
 
 #define AVA_GETS_ERROR -1
 #define AVA_GETS_OK 0
-#define AVA_GETS_RESTART 1
-#define AVA_GETS_TIMEOUT 2
 
 #define AVA_SEND_ERROR -1
 #define AVA_SEND_OK 0
-#define AVA_SEND_BUFFER_EMPTY 1
-#define AVA_SEND_BUFFER_FULL 2
 
 #define AVA_BUFFER_FULL 0
 #define AVA_BUFFER_EMPTY 1

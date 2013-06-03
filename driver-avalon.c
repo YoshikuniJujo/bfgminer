@@ -121,19 +121,47 @@ static inline void avalon_create_task(struct avalon_task *at,
 	memcpy(at->data, work->data + 64, 12);
 }
 
+static int avalon_write(int fd, char *buf, ssize_t len)
+{
+	ssize_t wrote = 0;
+
+	while (len > 0) {
+		struct timeval timeout;
+		ssize_t ret;
+		fd_set wd;
+
+		timeout.tv_sec = 0;
+		timeout.tv_usec = 100000;
+		FD_ZERO(&wd);
+		FD_SET((SOCKETTYPE)fd, &wd);
+		ret = select(fd + 1, NULL, &wd, NULL, &timeout);
+		if (unlikely(ret < 1)) {
+			applog(LOG_WARNING, "Select error on avalon_write");
+			return AVA_SEND_ERROR;
+		}
+		ret = write(fd, buf + wrote, len);
+		if (unlikely(ret < 1)) {
+			applog(LOG_WARNING, "Write error on avalon_write");
+			return AVA_SEND_ERROR;
+		}
+		wrote += ret;
+		len -= ret;
+	}
+
+	return AVA_SEND_OK;
+}
+
 static int avalon_send_task(int fd, const struct avalon_task *at,
 			    struct cgpu_info *avalon)
 
 {
-	size_t ret;
-	int full;
 	struct timespec p;
 	uint8_t buf[AVALON_WRITE_SIZE + 4 * AVALON_DEFAULT_ASIC_NUM];
 	size_t nr_len;
 	struct avalon_info *info;
 	uint64_t delay = 32000000; /* Default 32ms for B19200 */
 	uint32_t nonce_range;
-	int i;
+	int ret, i;
 
 	if (at->nonce_elf)
 		nr_len = AVALON_WRITE_SIZE + 4 * at->asic_num;
@@ -182,25 +210,16 @@ static int avalon_send_task(int fd, const struct avalon_task *at,
 		nr_len = 1;
 	if (opt_debug) {
 		applog(LOG_DEBUG, "Avalon: Sent(%u):", (unsigned int)nr_len);
-		hexdump((uint8_t *)buf, nr_len);
+		hexdump(buf, nr_len);
 	}
-	ret = write(fd, buf, nr_len);
-	if (unlikely(ret != nr_len))
-		return AVA_SEND_ERROR;
+	ret = avalon_write(fd, (char *)buf, nr_len);
 
 	p.tv_sec = 0;
 	p.tv_nsec = (long)delay + 4000000;
 	nanosleep(&p, NULL);
 	applog(LOG_DEBUG, "Avalon: Sent: Buffer delay: %ld", p.tv_nsec);
 
-	full = avalon_buffer_full(fd);
-	applog(LOG_DEBUG, "Avalon: Sent: Buffer full: %s",
-	       ((full == AVA_BUFFER_FULL) ? "Yes" : "No"));
-
-	if (unlikely(full == AVA_BUFFER_FULL))
-		return AVA_SEND_BUFFER_FULL;
-
-	return AVA_SEND_BUFFER_EMPTY;
+	return ret;
 }
 
 static void avalon_decode_nonce(struct thr_info *thr, struct cgpu_info *avalon,
@@ -243,7 +262,7 @@ static int avalon_read(int fd, char *buf, ssize_t len)
 		len -= ret;
 	}
 
-	return 0;
+	return AVA_GETS_OK;
 }
 
 static int avalon_reset(struct cgpu_info *avalon, int fd)
@@ -521,6 +540,9 @@ static void avalon_update_temps(struct cgpu_info *avalon, struct avalon_info *in
 
 static void avalon_inc_nvw(struct avalon_info *info, struct thr_info *thr)
 {
+	if (unlikely(info->idle))
+		return;
+
 	applog(LOG_WARNING, "%s%d: No valid work - HW error",
 			thr->cgpu->drv->name, thr->cgpu->device_id);
 
@@ -649,6 +671,13 @@ static void avalon_rotate_array(struct cgpu_info *avalon)
 		avalon->work_array = 0;
 }
 
+static void wait_avalon_ready(int fd)
+{
+	while (avalon_buffer_full(fd) == AVA_BUFFER_FULL) {
+		nmsleep(40);
+	}
+}
+
 static void *avalon_send_tasks(void *userdata)
 {
 	struct cgpu_info *avalon = (struct cgpu_info *)userdata;
@@ -656,7 +685,6 @@ static void *avalon_send_tasks(void *userdata)
 	const int avalon_get_work_count = info->miner_count;
 	int fd = avalon->device_fd;
 	char threadname[24];
-	bool idle = false;
 
 	pthread_detach(pthread_self());
 
@@ -668,23 +696,21 @@ static void *avalon_send_tasks(void *userdata)
 		struct avalon_task at;
 		int idled = 0;
 
-		while (avalon_buffer_full(fd)) {
-			nmsleep(40);
-		}
+		wait_avalon_ready(fd);
 
 		mutex_lock(&info->qlock);
 		start_count = avalon->work_array * avalon_get_work_count;
 		end_count = start_count + avalon_get_work_count;
 		for (i = start_count, j = 0; i < end_count; i++, j++) {
-			if (unlikely(avalon_buffer_full(fd))) {
+			if (unlikely(avalon_buffer_full(fd) == AVA_BUFFER_FULL)) {
 				applog(LOG_WARNING,
-				       "AVA%i: Buffer full before all  work queued",
+				       "AVA%i: Buffer full before all work queued",
 					avalon->device_id);
 				break;
 			}
 
 			if (likely(j < avalon->queued)) {
-				idle = false;
+				info->idle = false;
 				avalon_init_task(&at, 0, 0, info->fan_pwm,
 						info->timeout, info->asic_count,
 						info->miner_count, 1, 0, info->frequency);
@@ -703,15 +729,15 @@ static void *avalon_send_tasks(void *userdata)
 				avalon_reset(avalon, fd);
 			}
 		}
+		avalon_rotate_array(avalon);
 		pthread_cond_signal(&info->qcond);
 		mutex_unlock(&info->qlock);
 
-		if (unlikely(idled && !idle)) {
-			idle = true;
+		if (unlikely(idled && !info->idle)) {
+			info->idle = true;
 			applog(LOG_WARNING, "AVA%i: Idled %d miners",
 			       avalon->device_id, idled);
 		}
-		avalon_rotate_array(avalon);
 	}
 	return NULL;
 }
@@ -728,6 +754,7 @@ static bool avalon_prepare(struct thr_info *thr)
 	if (!avalon->works)
 		quit(1, "Failed to calloc avalon works in avalon_prepare");
 
+	info->idle = true;
 	info->thr = thr;
 	mutex_init(&info->lock);
 	mutex_init(&info->qlock);
@@ -736,6 +763,10 @@ static bool avalon_prepare(struct thr_info *thr)
 
 	if (pthread_create(&info->write_thr, NULL, avalon_send_tasks, (void *)avalon))
 		quit(1, "Failed to create avalon write_thr");
+
+	mutex_lock(&info->qlock);
+	pthread_cond_wait(&info->qcond, &info->qlock);
+	mutex_unlock(&info->qlock);
 
 	if (pthread_create(&info->read_thr, NULL, avalon_get_results, (void *)avalon))
 		quit(1, "Failed to create avalon read_thr");
@@ -773,10 +804,25 @@ static void do_avalon_close(struct thr_info *thr)
 {
 	struct cgpu_info *avalon = thr->cgpu;
 	struct avalon_info *info = avalon->device_data;
+	int i, fd = avalon->device_fd;
 
+	pthread_cancel(info->read_thr);
+	pthread_cancel(info->write_thr);
+	avalon_reset(avalon, fd);
+	wait_avalon_ready(fd);
+	applog(LOG_WARNING, "AVA%i: Idling %d miners", avalon->device_id,
+	       info->miner_count);
+	/* Send idle to all miners */
+	for (i = 0; i < info->miner_count; i++) {
+		struct avalon_task at;
+
+		avalon_init_task(&at, 0, 0, info->fan_pwm, info->timeout,
+				 info->asic_count, info->miner_count, 1, 1,
+				 info->frequency);
+		avalon_send_task(fd, &at, avalon);
+	}
 	avalon_free_work(thr);
-	avalon_reset(avalon, avalon->device_fd);
-	avalon_close(avalon->device_fd);
+	avalon_close(fd);
 	avalon->device_fd = -1;
 
 	info->no_matching_work = 0;
@@ -915,6 +961,20 @@ static int64_t avalon_scanhash(struct thr_info *thr)
 	return hash_count;
 }
 
+static void avalon_flush_work(struct cgpu_info *avalon)
+{
+	struct avalon_info *info = avalon->device_data;
+	struct thr_info *thr = info->thr;
+
+	thr->work_restart = false;
+
+	mutex_lock(&info->qlock);
+	/* Will overwrite any work queued */
+	avalon->queued = 0;
+	pthread_cond_signal(&info->qcond);
+	mutex_unlock(&info->qlock);
+}
+
 static struct api_data *avalon_api_stats(struct cgpu_info *cgpu)
 {
 	struct api_data *root = NULL;
@@ -960,6 +1020,7 @@ struct device_drv avalon_drv = {
 	.minerloop = hash_queued_work,
 	.queue_full = avalon_fill,
 	.scanwork = avalon_scanhash,
+	.flush_work = avalon_flush_work,
 	.get_api_stats = avalon_api_stats,
 	.reinit_device = avalon_init,
 	.thread_shutdown = avalon_shutdown,
