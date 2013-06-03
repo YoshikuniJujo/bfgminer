@@ -609,13 +609,6 @@ static bool avalon_detect_one(const char *devpath)
 	avalon->threads = AVALON_MINER_THREADS;
 	add_cgpu(avalon);
 
-	ret = avalon_reset(avalon, fd);
-	if (ret) {
-		; /* FIXME: I think IT IS avalon and wait on reset;
-		   * avalon_close(fd);
-		   * return false; */
-	}
-	
 	avalon_infos = realloc(avalon_infos,
 			       sizeof(struct avalon_info *) *
 			       (total_devices + 1));
@@ -629,8 +622,6 @@ static bool avalon_detect_one(const char *devpath)
 
 	avalon->device_data = avalon_infos[avalon->device_id];
 	info = avalon->device_data;
-
-	memset(info, 0, sizeof(struct avalon_info));
 
 	info->baud = baud;
 	info->miner_count = miner_count;
@@ -650,6 +641,13 @@ static bool avalon_detect_one(const char *devpath)
 	info->frequency = frequency;
 
 	avalon->device_fd = -1;
+
+	ret = avalon_reset(avalon, fd);
+	if (ret) {
+		; /* FIXME: I think IT IS avalon and wait on reset;
+		   * avalon_close(fd);
+		   * return false; */
+	}
 
 	avalon_close(fd);
 	return true;
