@@ -8403,6 +8403,9 @@ static void raise_fd_limits(void)
 #endif
 }
 
+int main_body_initialize(int argc, char *argv[]);
+int main_body_body();
+
 int
 main_body_args(char *address, char *name, char *password)
 {
@@ -8410,21 +8413,18 @@ main_body_args(char *address, char *name, char *password)
 	int argc = 7;
 	char *argv[] = { "bfgminer", "-o", address, "-u", name, "-p", password, NULL };
 	char **argp = argv;
-	main_body(argc, argp);
+	main_body_initialize(argc, argp);
+	return 0;
 
 }
 
-int main_body_no_arg()
+int
+curl_global_all()
 {
-
-	int argc = 0;
-	char *argv[] = { NULL };
-	char **argp = argv;
-	main_body(argc, argp);
-
+	return CURL_GLOBAL_ALL;
 }
 
-int main_body(int argc, char *argv[])
+int main_body_initialize(int argc, char *argv[])
 {
 	struct sigaction handler;
 	struct thr_info *thr;
@@ -8441,8 +8441,8 @@ int main_body(int argc, char *argv[])
 
 	/* This dangerous functions tramples random dynamically allocated
 	 * variables so do it before anything at all */
-	if (unlikely(curl_global_init(CURL_GLOBAL_ALL)))
-		quit(1, "Failed to curl_global_init");
+//	if (unlikely(curl_global_init(CURL_GLOBAL_ALL)))
+//		quit(1, "Failed to curl_global_init");
 
 	initial_args = malloc(sizeof(char *) * (argc + 1));
 	for  (i = 0; i < argc; i++)
@@ -9035,9 +9035,15 @@ begin_bench:
 	pthread_detach(thr->pth);
 #endif
 
+}
+
+int main_body_body()
+{
+
 	/* Just to be sure */
 	if (total_control_threads != 7)
-		quit(1, "incorrect total_control_threads (%d) should be 7", total_control_threads);
+		quit(1, "incorrect total_control_threads (%d) should be 7",
+			total_control_threads);
 
 	/* Once everything is set up, main() becomes the getwork scheduler */
 	while (42) {
