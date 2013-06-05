@@ -3108,6 +3108,7 @@ static void pool_died(struct pool *);
 
 /* Select any active pool in a rotating fashion when loadbalance is chosen */
 static inline struct pool *select_pool(bool lagging)
+// static struct pool *select_pool(bool lagging)
 {
 	static int rotating_pool = 0;
 	struct pool *pool, *cp;
@@ -9063,34 +9064,27 @@ int main_body_body_inside_bool(int *ts, struct pool *cp, int *max_staged, bool *
 	return *ts <= *max_staged;
 }
 
+struct work* fun_make_work() { return make_work(); }
+struct pool* fun_select_pool(bool lagging) { return select_pool(lagging); }
+void inc_getfail_occasions_and_total_go(struct pool *cp, bool lagging);
 int main_body_body_inside_body_body(
-	int ts, int max_staged, struct pool *pool, struct curl_ent *ce,
-	struct work *work);
-int main_body_body_inside_body(
-	int ts, struct pool *cp, int max_staged, bool lagging)
+	int ts, int max_staged, struct pool *pool, struct work *work);
+
+void
+inc_getfail_occasions_and_total_go(struct pool *cp, bool lagging)
 {
-	struct pool *pool;
-	struct curl_ent *ce;
-	struct work *work;
-
-	work = make_work();
-
 	if (lagging && !pool_tset(cp, &cp->lagging)) {
-		applog(LOG_WARNING, "Pool %d not providing work fast enough", cp->pool_no);
+		applog(LOG_WARNING, "Pool %d not providing work fast enough",
+			cp->pool_no);
 		cp->getfail_occasions++;
 		total_go++;
 	}
-	pool = select_pool(lagging);
-
-	main_body_body_inside_body_body(ts, max_staged, pool, ce, work);
-
-	return 0;
 }
 
 int main_body_body_inside_body_body(
-	int ts, int max_staged, struct pool *pool, struct curl_ent *ce,
-	struct work *work)
+	int ts, int max_staged, struct pool *pool, struct work *work)
 {
+	struct curl_ent *ce;
 	int retry_flag;
 	do {
 		retry_flag = 0;

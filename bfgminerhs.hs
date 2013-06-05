@@ -22,11 +22,17 @@ foreign import ccall "main_body_args" cMainBodyArg :: CString -> CString -> CStr
 
 foreign import ccall "main_body_body_inside_bool" cMainBodyBodyInsideBool ::
 	Ptr CInt -> Ptr Pool -> Ptr CInt -> Ptr CInt -> IO CInt
-foreign import ccall "main_body_body_inside_body" cMainBodyBodyInsideBody ::
-	CInt -> Ptr Pool -> CInt -> CInt -> IO ()
 foreign import ccall "current_pool" cCurrentPool :: IO (Ptr Pool)
 
+foreign import ccall "main_body_body_inside_body_body" cMainBodyBodyInsideBodyBody ::
+	CInt -> CInt -> Ptr Pool -> Ptr Work -> IO ()
+foreign import ccall "fun_make_work" cMakeWork :: IO (Ptr Work)
+foreign import ccall "fun_select_pool" cSelectPool :: CInt -> IO (Ptr Pool)
+foreign import ccall "inc_getfail_occasions_and_total_go"
+	cIncGetfailOccasionsAndTotalGo :: Ptr Pool -> CInt -> IO ()
+
 data Pool
+data Work
 
 foreign import ccall "get_opt_queue" cGetOptQueue :: IO CInt
 
@@ -43,8 +49,15 @@ mainBodyBodyInside v1 v2 = alloca $ \ts -> alloca $ \p1 -> alloca $ \p2 -> do
 	tsv <- peek ts
 	v1' <- peek p1
 	v2' <- peek p2
-	when b $ cMainBodyBodyInsideBody tsv cp v1' v2'
+	when b $ mainBodyBodyInsideBody tsv cp v1' v2'
 	return (v1', v2')
+
+mainBodyBodyInsideBody :: CInt -> Ptr Pool -> CInt -> CInt -> IO ()
+mainBodyBodyInsideBody ts cp maxStaged lagging = do
+	work <- cMakeWork
+	cIncGetfailOccasionsAndTotalGo cp lagging
+	pool <- cSelectPool lagging
+	cMainBodyBodyInsideBodyBody ts maxStaged pool work
 
 main :: IO ()
 main = do
