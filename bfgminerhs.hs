@@ -11,9 +11,10 @@ foreign import ccall "main_body_args" cMainBodyArg :: CString -> CString -> CStr
 
 main :: IO ()
 main = do
+	[addr, nm, pswd] <- getArgs
 	putStrLn "begin haskell!"
 	threadDelay 1000000
-	address <- newCString "pool.50btc.com:8332"
-	name <- newCString "PAF01143@nifty.ne.jp_powerfull"
-	password <- newCString "hoge"
+	address <- newCString addr
+	name <- newCString nm
+	password <- newCString pswd
 	cMainBodyArg address name password
