@@ -9049,92 +9049,84 @@ int main_body_body_inside(int *max_staged, bool *lagging)
 	struct curl_ent *ce;
 	struct work *work;
 
-	int i;
-	for (i = 0; i < 1; i++) {
-		cp = current_pool();
+//	applog(LOG_NOTICE, "loop n begin ...");
 
-		/* If the primary pool is a getwork pool and cannot roll work,
-		 * try to stage one extra work per mining thread */
-		if (!cp->has_stratum && cp->proto != PLP_GETBLOCKTEMPLATE &&
-			!staged_rollable)
-			*max_staged += mining_threads;
+	cp = current_pool();
 
-		mutex_lock(stgd_lock);
+	/* If the primary pool is a getwork pool and cannot roll work,
+	 * try to stage one extra work per mining thread */
+	if (!cp->has_stratum && cp->proto != PLP_GETBLOCKTEMPLATE &&
+		!staged_rollable) *max_staged += mining_threads;
+
+	mutex_lock(stgd_lock);
+	ts = __total_staged();
+
+	if (!cp->has_stratum && cp->proto != PLP_GETBLOCKTEMPLATE &&
+		!ts && !opt_fail_only) *lagging = true;
+
+	/* Wait until hash_pop tells us we need to create more work */
+	if (ts > *max_staged) {
+		pthread_cond_wait(&gws_cond, stgd_lock);
 		ts = __total_staged();
+	}
+	mutex_unlock(stgd_lock);
 
-		if (!cp->has_stratum && cp->proto != PLP_GETBLOCKTEMPLATE && !ts && !opt_fail_only)
-			*lagging = true;
+	if (ts > *max_staged) goto end;
 
-		/* Wait until hash_pop tells us we need to create more work */
-		if (ts > *max_staged) {
-			pthread_cond_wait(&gws_cond, stgd_lock);
-			ts = __total_staged();
-		}
-		mutex_unlock(stgd_lock);
+	work = make_work();
 
-		if (ts > *max_staged)
-			continue;
-
-		work = make_work();
-
-		if (*lagging && !pool_tset(cp, &cp->lagging)) {
-			applog(LOG_WARNING, "Pool %d not providing work fast enough", cp->pool_no);
-			cp->getfail_occasions++;
-			total_go++;
-		}
-		pool = select_pool(*lagging);
+	if (*lagging && !pool_tset(cp, &cp->lagging)) {
+		applog(LOG_WARNING, "Pool %d not providing work fast enough", cp->pool_no);
+		cp->getfail_occasions++;
+		total_go++;
+	}
+	pool = select_pool(*lagging);
 retry:
-		if (pool->has_stratum) {
-			while (!pool->stratum_active || !pool->stratum_notify) {
-				struct pool *altpool = select_pool(true);
-
-				if (altpool == pool && pool->has_stratum)
-					nmsleep(5000);
-				pool = altpool;
-				goto retry;
-			}
-			gen_stratum_work(pool, work);
-			applog(LOG_DEBUG, "Generated stratum work");
-			stage_work(work);
-			continue;
+	if (pool->has_stratum) {
+		while (pool -> has_stratum &&
+			(!pool->stratum_active || !pool->stratum_notify)) {
+			struct pool *altpool = select_pool(true);
+			if (altpool == pool && pool->has_stratum) nmsleep(5000);
+			pool = altpool;
 		}
+		gen_stratum_work(pool, work);
+		applog(LOG_DEBUG, "Generated stratum work");
+		stage_work(work);
+		goto end;
+	}
 
-		if (pool->last_work_copy) {
-			mutex_lock(&pool->last_work_lock);
-			struct work *last_work = pool->last_work_copy;
-			if (!last_work)
-				{}
-			else
-			if (can_roll(last_work) && should_roll(last_work)) {
-				free_work(work);
-				work = make_clone(pool->last_work_copy);
-				mutex_unlock(&pool->last_work_lock);
-				roll_work(work);
-				applog(LOG_DEBUG, "Generated work from latest GBT job in get_work_thread with %d seconds left", (int)blkmk_time_left(work->tmpl, time(NULL)));
-				stage_work(work);
-				continue;
-			} else if (last_work->tmpl && pool->proto == PLP_GETBLOCKTEMPLATE && blkmk_work_left(last_work->tmpl) > (unsigned long)mining_threads) {
-				// Don't free last_work_copy, since it is used to detect upstream provides plenty of work per template
-			} else {
-				free_work(last_work);
-				pool->last_work_copy = NULL;
-			}
-			mutex_unlock(&pool->last_work_lock);
-		}
-
-		if (clone_available()) {
-			applog(LOG_DEBUG, "Cloned getwork work");
+	if (pool->last_work_copy) {
+		mutex_lock(&pool->last_work_lock);
+		struct work *last_work = pool->last_work_copy;
+		if (!last_work) {
+		} else if (can_roll(last_work) && should_roll(last_work)) {
 			free_work(work);
-			continue;
-		}
-
-		if (opt_benchmark) {
-			get_benchmark_work(work);
-			applog(LOG_DEBUG, "Generated benchmark work");
+			work = make_clone(pool->last_work_copy);
+			mutex_unlock(&pool->last_work_lock);
+			roll_work(work);
+			applog(LOG_DEBUG, "Generated work from latest GBT job in get_work_thread with %d seconds left", (int)blkmk_time_left(work->tmpl, time(NULL)));
 			stage_work(work);
-			continue;
+			goto end;
+		} else if (last_work->tmpl && pool->proto == PLP_GETBLOCKTEMPLATE
+			&& blkmk_work_left(last_work->tmpl) >
+				(unsigned long)mining_threads) {
+			// Don't free last_work_copy, since it is used to detect
+			// upstream provides plenty of work per template
+		} else {
+			free_work(last_work);
+			pool->last_work_copy = NULL;
 		}
+		mutex_unlock(&pool->last_work_lock);
+	}
 
+	if (clone_available()) {
+		applog(LOG_DEBUG, "Cloned getwork work");
+		free_work(work);
+	} else if (opt_benchmark) {
+		get_benchmark_work(work);
+		applog(LOG_DEBUG, "Generated benchmark work");
+		stage_work(work);
+	} else {
 		work->pool = pool;
 		ce = pop_curl_entry3(pool, 2);
 		/* obtain new work from bitcoin via JSON-RPC */
@@ -9142,29 +9134,34 @@ retry:
 			struct pool *next_pool;
 
 			/* Make sure the pool just hasn't stopped serving
-			 * requests but is up as we'll keep hammering it */
+		 	* requests but is up as we'll keep hammering it */
 			push_curl_entry(ce, pool);
 			++pool->seq_getfails;
 			pool_died(pool);
 			next_pool = select_pool(!opt_fail_only);
 			if (pool == next_pool) {
-				applog(LOG_DEBUG, "Pool %d json_rpc_call failed on get work, retrying in 5s", pool->pool_no);
+				applog(LOG_DEBUG,
+					"Pool %d json_rpc_call failed on get "
+					"work, retrying in 5s", pool->pool_no);
 				nmsleep(5000);
 			} else {
-				applog(LOG_DEBUG, "Pool %d json_rpc_call failed on get work, failover activated", pool->pool_no);
+				applog(LOG_DEBUG, "Pool %d json_rpc_call failed "
+					"on get work, failover activated",
+					pool->pool_no);
 				pool = next_pool;
 			}
 			goto retry;
 		}
-		if (ts >= *max_staged)
-			pool_tclear(pool, &pool->lagging);
-		if (pool_tclear(pool, &pool->idle))
-			pool_resus(pool);
+		if (ts >= *max_staged) pool_tclear(pool, &pool->lagging);
+		if (pool_tclear(pool, &pool->idle)) pool_resus(pool);
 
 		applog(LOG_DEBUG, "Generated getwork work");
 		stage_work(work);
 		push_curl_entry(ce, pool);
+//		applog(LOG_NOTICE, "Hello!");
 	}
+
+end:
 
 	return 0;
 }
