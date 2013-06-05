@@ -8403,6 +8403,17 @@ static void raise_fd_limits(void)
 #endif
 }
 
+int
+main_body_args(char *address, char *name, char *password)
+{
+
+	int argc = 7;
+	char *argv[] = { "bfgminer", "-o", address, "-u", name, "-p", password, NULL };
+	char **argp = argv;
+	main_body(argc, argp);
+
+}
+
 int main_body_no_arg()
 {
 
