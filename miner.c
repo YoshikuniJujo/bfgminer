@@ -9037,53 +9037,52 @@ begin_bench:
 
 }
 
-int main_body_body()
+int get_total_control_threads()
 {
+	return total_control_threads;
+}
 
-	/* Just to be sure */
-	if (total_control_threads != 7)
-		quit(1, "incorrect total_control_threads (%d) should be 7",
-			total_control_threads);
+int main_body_body_inside(int *max_staged, bool *lagging)
+{
+	int ts;
+	struct pool *pool, *cp;
+	struct curl_ent *ce;
+	struct work *work;
 
-	/* Once everything is set up, main() becomes the getwork scheduler */
-	while (42) {
-		int ts, max_staged = opt_queue;
-		struct pool *pool, *cp;
-		bool lagging = false;
-		struct curl_ent *ce;
-		struct work *work;
-
+	int i;
+	for (i = 0; i < 1; i++) {
 		cp = current_pool();
 
 		/* If the primary pool is a getwork pool and cannot roll work,
 		 * try to stage one extra work per mining thread */
-		if (!cp->has_stratum && cp->proto != PLP_GETBLOCKTEMPLATE && !staged_rollable)
-			max_staged += mining_threads;
+		if (!cp->has_stratum && cp->proto != PLP_GETBLOCKTEMPLATE &&
+			!staged_rollable)
+			*max_staged += mining_threads;
 
 		mutex_lock(stgd_lock);
 		ts = __total_staged();
 
 		if (!cp->has_stratum && cp->proto != PLP_GETBLOCKTEMPLATE && !ts && !opt_fail_only)
-			lagging = true;
+			*lagging = true;
 
 		/* Wait until hash_pop tells us we need to create more work */
-		if (ts > max_staged) {
+		if (ts > *max_staged) {
 			pthread_cond_wait(&gws_cond, stgd_lock);
 			ts = __total_staged();
 		}
 		mutex_unlock(stgd_lock);
 
-		if (ts > max_staged)
+		if (ts > *max_staged)
 			continue;
 
 		work = make_work();
 
-		if (lagging && !pool_tset(cp, &cp->lagging)) {
+		if (*lagging && !pool_tset(cp, &cp->lagging)) {
 			applog(LOG_WARNING, "Pool %d not providing work fast enough", cp->pool_no);
 			cp->getfail_occasions++;
 			total_go++;
 		}
-		pool = select_pool(lagging);
+		pool = select_pool(*lagging);
 retry:
 		if (pool->has_stratum) {
 			while (!pool->stratum_active || !pool->stratum_notify) {
@@ -9157,7 +9156,7 @@ retry:
 			}
 			goto retry;
 		}
-		if (ts >= max_staged)
+		if (ts >= *max_staged)
 			pool_tclear(pool, &pool->lagging);
 		if (pool_tclear(pool, &pool->idle))
 			pool_resus(pool);
@@ -9168,4 +9167,9 @@ retry:
 	}
 
 	return 0;
+}
+
+int get_opt_queue()
+{
+	return opt_queue;
 }
