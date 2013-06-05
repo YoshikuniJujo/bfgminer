@@ -8403,7 +8403,17 @@ static void raise_fd_limits(void)
 #endif
 }
 
-int main(int argc, char *argv[])
+int main_body_no_arg()
+{
+
+	int argc = 0;
+	char *argv[] = { NULL };
+	char **argp = argv;
+	main_body(argc, argp);
+
+}
+
+int main_body(int argc, char *argv[])
 {
 	struct sigaction handler;
 	struct thr_info *thr;
