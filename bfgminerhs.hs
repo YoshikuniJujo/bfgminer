@@ -10,6 +10,11 @@ import Control.Concurrent (threadDelay)
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad (when)
 
+poolNotHasStratum :: Int -> Int -> Pool -> Work -> IO Bool
+poolNotHasStratum ts maxStaged pool work = do
+	b <- poolNotHasStratumBody ts maxStaged pool work
+	if b then return False else notShouldRoll ts maxStaged pool work
+
 main :: IO ()
 main = do
 	r <- curlGlobalInit curlGlobalAll
@@ -33,8 +38,12 @@ main = do
 			doWhile $ do
 				hasStratum <- doesPoolHaveStratum pool
 				if hasStratum
-					then poolHasStratum pool work >> return False
-					else poolNotHasStratum ts maxStaged' pool work
+					then do	poolHasStratum pool work
+						return False
+					else do b <- doesExistLastWorkCopy pool
+						if b	then poolNotHasStratum ts
+								maxStaged' pool work
+							else return False
 		return (maxStaged', lagging')
 
 	curlGlobalCleanup

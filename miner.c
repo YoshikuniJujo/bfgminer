@@ -9036,6 +9036,7 @@ struct pool* wrap_select_pool(bool lagging) { return select_pool(lagging); }
 int get_total_control_threads() { return total_control_threads; }
 int get_opt_queue() { return opt_queue; }
 int does_pool_have_stratum(struct pool *pool) { return pool->has_stratum; }
+int does_exist_last_work_copy(struct pool *pool) { pool->last_work_copy; }
 
 int main_inside_bool(int *ts, struct pool *cp, int *max_staged, bool *lagging)
 {
@@ -9086,37 +9087,36 @@ pool_has_stratum(struct pool *pool, struct work *work)
 }
 
 int
-pool_not_has_stratum(int ts, int max_staged, struct pool *pool, struct work *work)
+pool_not_has_stratum_body(
+	int ts, int max_staged, struct pool *pool, struct work *work)
 {
-	int retry_flag = 0;
-	if (pool->last_work_copy) {
-		mutex_lock(&pool->last_work_lock);
-		struct work *last_work = pool->last_work_copy;
-		if (!last_work) {
-		} else if (can_roll(last_work) && should_roll(last_work)) {
-			free_work(work);
-			work = make_clone(pool->last_work_copy);
-			mutex_unlock(&pool->last_work_lock);
-			roll_work(work);
-			applog(LOG_DEBUG, "Generated work from latest GBT job in get_work_thread with %d seconds left", (int)blkmk_time_left(work->tmpl, time(NULL)));
-			stage_work(work);
-			mutex_unlock(&pool->last_work_lock);
-		} else if (last_work->tmpl && pool->proto == PLP_GETBLOCKTEMPLATE
-			&& blkmk_work_left(last_work->tmpl) >
-				(unsigned long)mining_threads) {
-			// Don't free last_work_copy, since it is used to detect
-			// upstream provides plenty of work per template
-			mutex_unlock(&pool->last_work_lock);
-			retry_flag = not_should_roll(ts, max_staged, pool, work);
-		} else {
-			free_work(last_work);
-			pool->last_work_copy = NULL;
-			mutex_unlock(&pool->last_work_lock);
-			retry_flag = not_should_roll(ts, max_staged, pool, work);
-		}
+	int should_roll_flag = 0;
+
+	mutex_lock(&pool->last_work_lock);
+
+	struct work *last_work = pool->last_work_copy;
+	if (!last_work) {
+	} else if (can_roll(last_work) && should_roll(last_work)) {
+		free_work(work);
+		work = make_clone(pool->last_work_copy);
+		mutex_unlock(&pool->last_work_lock);
+		roll_work(work);
+		applog(LOG_DEBUG, "Generated work from latest GBT job in get_work_thread with %d seconds left", (int)blkmk_time_left(work->tmpl, time(NULL)));
+		stage_work(work);
+		should_roll_flag = 1;
+	} else if (last_work->tmpl && pool->proto == PLP_GETBLOCKTEMPLATE
+		&& blkmk_work_left(last_work->tmpl) >
+			(unsigned long)mining_threads) {
+		// Don't free last_work_copy, since it is used to detect
+		// upstream provides plenty of work per template
+	} else {
+		free_work(last_work);
+		pool->last_work_copy = NULL;
 	}
 
-	return retry_flag;
+	mutex_unlock(&pool->last_work_lock);
+
+	return should_roll_flag;
 }
 
 int
