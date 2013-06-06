@@ -9027,7 +9027,6 @@ begin_bench:
  *                    main loop                             *
  ************************************************************/
 
-int not_should_roll(int ts, int max_staged, struct pool *pool, struct work *work);
 int not_clone_not_bench(int ts, int max_staged, struct pool *pool, struct work *work);
 void not_get_upstream_work(struct pool **pool, struct curl_ent *ce);
 
@@ -9120,9 +9119,9 @@ pool_not_has_stratum_body(
 }
 
 int
-not_should_roll(int ts, int max_staged, struct pool *pool, struct work *work)
+not_should_roll_body(struct pool *pool, struct work *work)
 {
-	int retry_flag = 0;
+	int not_clone_not_bench_flag = 0;
 
 	if (clone_available()) {
 		applog(LOG_DEBUG, "Cloned getwork work");
@@ -9132,10 +9131,10 @@ not_should_roll(int ts, int max_staged, struct pool *pool, struct work *work)
 		applog(LOG_DEBUG, "Generated benchmark work");
 		stage_work(work);
 	} else {
-		retry_flag = not_clone_not_bench(ts, max_staged, pool, work);
+		not_clone_not_bench_flag = 1;
 	}
 
-	return retry_flag;
+	return not_clone_not_bench_flag;
 }
 
 

@@ -13,7 +13,10 @@ import Control.Monad (when)
 poolNotHasStratum :: Int -> Int -> Pool -> Work -> IO Bool
 poolNotHasStratum ts maxStaged pool work = do
 	b <- poolNotHasStratumBody ts maxStaged pool work
-	if b then return False else notShouldRoll ts maxStaged pool work
+	if b then return False else do
+		ncnb <- notShouldRollBody pool work
+		if not ncnb then return False else
+			notCloneNotBench ts maxStaged pool work
 
 main :: IO ()
 main = do

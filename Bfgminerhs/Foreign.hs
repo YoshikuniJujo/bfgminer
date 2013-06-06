@@ -4,7 +4,8 @@ module Bfgminerhs.Foreign (
 	poolHasStratum,
 	doesExistLastWorkCopy,
 	poolNotHasStratumBody,
-	notShouldRoll,
+	notShouldRollBody,
+	notCloneNotBench,
 	mainInsideBool,
 	currentPool,
 	makeWork,
@@ -98,7 +99,9 @@ foreign import ccall "does_exist_last_work_copy" cDoesExistLastWorkCopy ::
 	Ptr Pool -> IO Bool
 foreign import ccall "pool_not_has_stratum_body" cPoolNotHasStratumBody ::
 	CInt -> CInt -> Ptr Pool -> Ptr Work -> IO Bool
-foreign import ccall "not_should_roll" cNotShouldRoll ::
+foreign import ccall "not_should_roll_body" cNotShouldRollBody ::
+	Ptr Pool -> Ptr Work -> IO Bool
+foreign import ccall "not_clone_not_bench" cNotCloneNotBench ::
 	CInt -> CInt -> Ptr Pool -> Ptr Work -> IO Bool
 
 doesPoolHaveStratum :: Pool -> IO Bool
@@ -110,9 +113,11 @@ doesExistLastWorkCopy = cDoesExistLastWorkCopy . getPtrPool
 poolNotHasStratumBody :: Int -> Int -> Pool -> Work -> IO Bool
 poolNotHasStratumBody ts maxStaged (Pool p) (Work w) =
 	cPoolNotHasStratumBody (fromIntegral ts) (fromIntegral maxStaged) p w
-notShouldRoll :: Int -> Int -> Pool -> Work -> IO Bool
-notShouldRoll ts maxStaged (Pool p) (Work w) =
-	cNotShouldRoll (fromIntegral ts) (fromIntegral maxStaged) p w
+notShouldRollBody :: Pool -> Work -> IO Bool
+notShouldRollBody (Pool p) (Work w) = cNotShouldRollBody p w
+notCloneNotBench :: Int -> Int -> Pool -> Work -> IO Bool
+notCloneNotBench ts maxStaged (Pool p) (Work w) =
+	cNotCloneNotBench (fromIntegral ts) (fromIntegral maxStaged) p w
 
 foreign import ccall "get_opt_queue" cGetOptQueue :: IO CInt
 
