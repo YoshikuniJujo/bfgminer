@@ -7,42 +7,34 @@ import Bfgminerhs.Tools
 
 import System.Environment (getProgName, getArgs)
 import Control.Concurrent (threadDelay)
+import Control.Applicative ((<$>), (<*>))
 import Control.Monad (when)
-
-mainInsideBodyBody :: Int -> Int -> Pool -> Work -> IO ()
-mainInsideBodyBody ts maxStaged pool@(Pool ppool) work@(Work pwork) = do
-	hasStratum <- doesPoolHaveStratum pool
-	if hasStratum then poolHasStratum pool work else do
-		retry <- poolNotHasStratum ts maxStaged pool work
-		when retry $ mainInsideBodyBody ts maxStaged pool work
-
-mainInsideBody :: Int -> Pool -> Int -> Bool -> IO ()
-mainInsideBody ts cp maxStaged lagging = do
-	work <- makeWork
-	incGetfailOccasionsAndTotalGo cp lagging
-	pool <- selectPool lagging
-	mainInsideBodyBody ts maxStaged pool work
 
 main :: IO ()
 main = do
-	progName <- getProgName
-	args <- getArgs
-	putStrLn "begin haskell! delete no arg"
+	r <- curlGlobalInit curlGlobalAll
+	when (r /= 0) $ quit 1 "curl initialize error"
 
-	curlGlobalInit curlGlobalAll >>= print
-	threadDelay 1000000
-
-	mainInitialize $ progName : args
+	mainInitialize =<< (:) <$> getProgName <*> getArgs
 
 	tct <- getTotalControlThreads
 	when (tct /= 7) $ quit 1 "bad total control threads"
 
-	initMaxStaged <- getOptQueue
+	initialMaxStaged <- getOptQueue
 
-	loop (initMaxStaged, False) $ \(maxStaged, lagging) -> do
+	loop (initialMaxStaged, False) $ \(maxStaged, lagging) -> do
 		cp <- currentPool
-		(b, (ts, maxStaged', lagging')) <- mainInsideBool cp maxStaged lagging
-		when b $ mainInsideBody ts cp maxStaged' lagging'
+		(b, (ts, maxStaged', lagging')) <-
+			mainInsideBool cp maxStaged lagging
+		when b $ do
+			work <- makeWork
+			incGetfailOccasionsAndTotalGo cp lagging'
+			pool <- selectPool lagging'
+			doWhile $ do
+				hasStratum <- doesPoolHaveStratum pool
+				if hasStratum
+					then poolHasStratum pool work >> return False
+					else poolNotHasStratum ts maxStaged' pool work
 		return (maxStaged', lagging')
 
 	curlGlobalCleanup
