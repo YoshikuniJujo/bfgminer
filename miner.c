@@ -9132,10 +9132,10 @@ pool_not_has_stratum(int ts, int max_staged, struct pool *pool, struct work *wor
 	return retry_flag;
 }
 
+int not_clone_not_bench(int ts, int max_staged, struct pool *pool, struct work *work);
 int
 not_should_roll(int ts, int max_staged, struct pool *pool, struct work *work)
 {
-	struct curl_ent *ce;
 	int retry_flag = 0;
 
 	if (clone_available()) {
@@ -9146,38 +9146,51 @@ not_should_roll(int ts, int max_staged, struct pool *pool, struct work *work)
 		applog(LOG_DEBUG, "Generated benchmark work");
 		stage_work(work);
 	} else {
-		work->pool = pool;
-		ce = pop_curl_entry3(pool, 2);
-		/* obtain new work from bitcoin via JSON-RPC */
-		if (!get_upstream_work(work, ce->curl)) {
-			struct pool *next_pool;
+		retry_flag = not_clone_not_bench(ts, max_staged, pool, work);
+	}
 
-			/* Make sure the pool just hasn't stopped serving
- 			* requests but is up as we'll keep hammering it */
-			push_curl_entry(ce, pool);
-			++pool->seq_getfails;
-			pool_died(pool);
-			next_pool = select_pool(!opt_fail_only);
-			if (pool == next_pool) {
-				applog(LOG_DEBUG,
-					"Pool %d json_rpc_call failed on get "
-					"work, retrying in 5s", pool->pool_no);
-				nmsleep(5000);
-			} else {
-				applog(LOG_DEBUG, "Pool %d json_rpc_call failed "
-					"on get work, failover activated",
-					pool->pool_no);
-				pool = next_pool;
-			}
-			retry_flag = 1;
+	return retry_flag;
+}
+
+
+int
+not_clone_not_bench(int ts, int max_staged, struct pool *pool, struct work *work)
+{
+	struct curl_ent *ce;
+	int retry_flag;
+
+	work->pool = pool;
+	ce = pop_curl_entry3(pool, 2);
+
+	/* obtain new work from bitcoin via JSON-RPC */
+	if (!get_upstream_work(work, ce->curl)) {
+		struct pool *next_pool;
+
+		/* Make sure the pool just hasn't stopped serving
+		* requests but is up as we'll keep hammering it */
+		push_curl_entry(ce, pool);
+		++pool->seq_getfails;
+		pool_died(pool);
+		next_pool = select_pool(!opt_fail_only);
+		if (pool == next_pool) {
+			applog(LOG_DEBUG,
+				"Pool %d json_rpc_call failed on get work, "
+				"retrying in 5s", pool->pool_no);
+			nmsleep(5000);
 		} else {
-			if (ts >= max_staged) pool_tclear(pool, &pool->lagging);
-			if (pool_tclear(pool, &pool->idle)) pool_resus(pool);
-
-			applog(LOG_DEBUG, "Generated getwork work");
-			stage_work(work);
-			push_curl_entry(ce, pool);
+			applog(LOG_DEBUG,
+				"Pool %d json_rpc_call failed on get work, "
+				"failover activated", pool->pool_no);
+			pool = next_pool;
 		}
+		retry_flag = 1;
+	} else {
+		if (ts >= max_staged) pool_tclear(pool, &pool->lagging);
+		if (pool_tclear(pool, &pool->idle)) pool_resus(pool);
+
+		applog(LOG_DEBUG, "Generated getwork work");
+		stage_work(work);
+		push_curl_entry(ce, pool);
 	}
 
 	return retry_flag;
