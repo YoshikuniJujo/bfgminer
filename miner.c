@@ -9097,12 +9097,11 @@ pool_has_stratum(struct pool *pool, struct work *work)
 	stage_work(work);
 }
 
+int not_should_roll(int ts, int max_staged, struct pool *pool, struct work *work);
 int
 pool_not_has_stratum(int ts, int max_staged, struct pool *pool, struct work *work)
 {
-	struct curl_ent *ce;
 	int retry_flag = 0;
-	int flag = 0;
 	if (pool->last_work_copy) {
 		mutex_lock(&pool->last_work_lock);
 		struct work *last_work = pool->last_work_copy;
@@ -9114,21 +9113,32 @@ pool_not_has_stratum(int ts, int max_staged, struct pool *pool, struct work *wor
 			roll_work(work);
 			applog(LOG_DEBUG, "Generated work from latest GBT job in get_work_thread with %d seconds left", (int)blkmk_time_left(work->tmpl, time(NULL)));
 			stage_work(work);
-			flag = 1;
+			mutex_unlock(&pool->last_work_lock);
 		} else if (last_work->tmpl && pool->proto == PLP_GETBLOCKTEMPLATE
 			&& blkmk_work_left(last_work->tmpl) >
 				(unsigned long)mining_threads) {
 			// Don't free last_work_copy, since it is used to detect
 			// upstream provides plenty of work per template
+			mutex_unlock(&pool->last_work_lock);
+			retry_flag = not_should_roll(ts, max_staged, pool, work);
 		} else {
 			free_work(last_work);
 			pool->last_work_copy = NULL;
+			mutex_unlock(&pool->last_work_lock);
+			retry_flag = not_should_roll(ts, max_staged, pool, work);
 		}
-		mutex_unlock(&pool->last_work_lock);
 	}
 
-	if (flag) {
-	} else if (clone_available()) {
+	return retry_flag;
+}
+
+int
+not_should_roll(int ts, int max_staged, struct pool *pool, struct work *work)
+{
+	struct curl_ent *ce;
+	int retry_flag = 0;
+
+	if (clone_available()) {
 		applog(LOG_DEBUG, "Cloned getwork work");
 		free_work(work);
 	} else if (opt_benchmark) {
@@ -9159,7 +9169,6 @@ pool_not_has_stratum(int ts, int max_staged, struct pool *pool, struct work *wor
 					pool->pool_no);
 				pool = next_pool;
 			}
-			applog(LOG_NOTICE, "goto retry");
 			retry_flag = 1;
 		} else {
 			if (ts >= max_staged) pool_tclear(pool, &pool->lagging);
@@ -9170,5 +9179,6 @@ pool_not_has_stratum(int ts, int max_staged, struct pool *pool, struct work *wor
 			push_curl_entry(ce, pool);
 		}
 	}
+
 	return retry_flag;
 }
