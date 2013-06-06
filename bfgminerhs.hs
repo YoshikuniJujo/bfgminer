@@ -24,13 +24,25 @@ foreign import ccall "main_body_body_inside_bool" cMainBodyBodyInsideBool ::
 	Ptr CInt -> Ptr Pool -> Ptr CInt -> Ptr CInt -> IO CInt
 foreign import ccall "current_pool" cCurrentPool :: IO (Ptr Pool)
 
-foreign import ccall "main_body_body_inside_body_body" cMainBodyBodyInsideBodyBody ::
-	CInt -> CInt -> Ptr Pool -> Ptr Work -> IO ()
 foreign import ccall "fun_make_work" cMakeWork :: IO (Ptr Work)
 foreign import ccall "fun_select_pool" cSelectPool :: CInt -> IO (Ptr Pool)
 foreign import ccall "inc_getfail_occasions_and_total_go"
 	cIncGetfailOccasionsAndTotalGo :: Ptr Pool -> CInt -> IO ()
 
+foreign import ccall "pool_has_stratum" cPoolHasStratum ::
+	Ptr Pool -> Ptr Work -> IO ()
+foreign import ccall "pool_not_has_stratum" cPoolNotHasStratum ::
+	CInt -> CInt -> Ptr Pool -> Ptr Work -> IO Bool
+foreign import ccall "does_pool_have_stratum" cDoesPoolHaveStratum ::
+	Ptr Pool -> IO Bool
+
+mainBodyBodyInsideBodyBody :: CInt -> CInt -> Ptr Pool -> Ptr Work -> IO ()
+mainBodyBodyInsideBodyBody ts maxStaged pool work = do
+	hasStratum <- cDoesPoolHaveStratum pool
+	if hasStratum then cPoolHasStratum pool work else do
+		retry <- cPoolNotHasStratum ts maxStaged pool work
+		when retry $ mainBodyBodyInsideBodyBody ts maxStaged pool work
+	
 data Pool
 data Work
 
@@ -57,7 +69,7 @@ mainBodyBodyInsideBody ts cp maxStaged lagging = do
 	work <- cMakeWork
 	cIncGetfailOccasionsAndTotalGo cp lagging
 	pool <- cSelectPool lagging
-	cMainBodyBodyInsideBodyBody ts maxStaged pool work
+	mainBodyBodyInsideBodyBody ts maxStaged pool work
 
 main :: IO ()
 main = do
