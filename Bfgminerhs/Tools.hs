@@ -10,7 +10,7 @@ loop x act = do
 	r <- act x
 	loop r act
 
-doWhile :: IO Bool -> IO ()
-doWhile action = do
-	b <- action
-	when b $ doWhile action
+doWhile :: a -> (a -> IO (a, Bool)) -> IO ()
+doWhile x0 action = do
+	(x1, b) <- action x0
+	when b $ doWhile x1 action

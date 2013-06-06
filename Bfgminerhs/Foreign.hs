@@ -5,7 +5,8 @@ module Bfgminerhs.Foreign (
 	doesExistLastWorkCopy,
 	poolNotHasStratumBody,
 	notShouldRollBody,
-	notCloneNotBench,
+	notCloneNotBenchBody,
+	notGetUpstreamWork,
 	mainInsideBool,
 	currentPool,
 	makeWork,
@@ -29,6 +30,7 @@ import Foreign.Storable
 	
 data Pool = Pool { getPtrPool :: Ptr Pool }
 data Work = Work { getPtrWork :: Ptr Work }
+data CurlEnt = CurlEnt { getPtrCurlEnt :: Ptr CurlEnt }
 
 fromCArrayFun :: (CInt -> Ptr CString -> IO a) -> [String] -> IO a
 fromCArrayFun f args = do
@@ -101,8 +103,10 @@ foreign import ccall "pool_not_has_stratum_body" cPoolNotHasStratumBody ::
 	CInt -> CInt -> Ptr Pool -> Ptr Work -> IO Bool
 foreign import ccall "not_should_roll_body" cNotShouldRollBody ::
 	Ptr Pool -> Ptr Work -> IO Bool
-foreign import ccall "not_clone_not_bench" cNotCloneNotBench ::
-	CInt -> CInt -> Ptr Pool -> Ptr Work -> IO Bool
+foreign import ccall "not_clone_not_bench_body" cNotCloneNotBenchBody ::
+	CInt -> CInt -> Ptr Pool -> Ptr Work -> Ptr (Ptr CurlEnt) -> IO Bool
+foreign import ccall "not_get_upstream_work" cNotGetUpstreamWork ::
+	Ptr (Ptr Pool) -> Ptr CurlEnt -> IO ()
 
 doesPoolHaveStratum :: Pool -> IO Bool
 doesPoolHaveStratum = cDoesPoolHaveStratum . getPtrPool
@@ -115,9 +119,17 @@ poolNotHasStratumBody ts maxStaged (Pool p) (Work w) =
 	cPoolNotHasStratumBody (fromIntegral ts) (fromIntegral maxStaged) p w
 notShouldRollBody :: Pool -> Work -> IO Bool
 notShouldRollBody (Pool p) (Work w) = cNotShouldRollBody p w
-notCloneNotBench :: Int -> Int -> Pool -> Work -> IO Bool
-notCloneNotBench ts maxStaged (Pool p) (Work w) =
-	cNotCloneNotBench (fromIntegral ts) (fromIntegral maxStaged) p w
+notCloneNotBenchBody :: Int -> Int -> Pool -> Work -> IO (CurlEnt, Bool)
+notCloneNotBenchBody ts maxStaged (Pool p) (Work w) = alloca $ \pce -> do
+	b <- cNotCloneNotBenchBody (fromIntegral ts) (fromIntegral maxStaged) p w pce
+	ce <- peek pce
+	return (CurlEnt ce, b)
+notGetUpstreamWork :: Pool -> CurlEnt -> IO Pool
+notGetUpstreamWork (Pool p) (CurlEnt ce) = alloca $ \pp -> do
+	poke pp p
+	cNotGetUpstreamWork pp ce
+	p' <- peek pp
+	return $ Pool p'
 
 foreign import ccall "get_opt_queue" cGetOptQueue :: IO CInt
 
