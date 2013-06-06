@@ -65,3 +65,4 @@ core*
 
 /bfgminerhs
 /bfgminerhs.hi
+*.hi

@@ -8404,6 +8404,10 @@ static void raise_fd_limits(void)
 #endif
 }
 
+/************************************************************
+ *                   int main                               *
+ ************************************************************/
+
 int curl_global_all() { return CURL_GLOBAL_ALL; }
 
 int main_initialize(int argc, char *argv[])
@@ -9019,12 +9023,16 @@ begin_bench:
 
 }
 
+/************************************************************
+ *                    main loop                             *
+ ************************************************************/
+
 int not_should_roll(int ts, int max_staged, struct pool *pool, struct work *work);
 int not_clone_not_bench(int ts, int max_staged, struct pool *pool, struct work *work);
 void not_get_upstream_work(struct pool **pool, struct curl_ent *ce);
 
-struct work* fun_make_work() { return make_work(); }
-struct pool* fun_select_pool(bool lagging) { return select_pool(lagging); }
+struct work* wrap_make_work() { return make_work(); }
+struct pool* wrap_select_pool(bool lagging) { return select_pool(lagging); }
 int get_total_control_threads() { return total_control_threads; }
 int get_opt_queue() { return opt_queue; }
 int does_pool_have_stratum(struct pool *pool) { return pool->has_stratum; }
