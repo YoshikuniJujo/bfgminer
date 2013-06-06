@@ -8404,28 +8404,9 @@ static void raise_fd_limits(void)
 #endif
 }
 
-int main_body_initialize(int argc, char *argv[]);
-int main_body_body();
+int curl_global_all() { return CURL_GLOBAL_ALL; }
 
-int
-main_body_args(char *address, char *name, char *password)
-{
-
-	int argc = 7;
-	char *argv[] = { "bfgminer", "-o", address, "-u", name, "-p", password, NULL };
-	char **argp = argv;
-	main_body_initialize(argc, argp);
-	return 0;
-
-}
-
-int
-curl_global_all()
-{
-	return CURL_GLOBAL_ALL;
-}
-
-int main_body_initialize(int argc, char *argv[])
+int main_initialize(int argc, char *argv[])
 {
 	struct sigaction handler;
 	struct thr_info *thr;
@@ -9038,10 +9019,17 @@ begin_bench:
 
 }
 
+int not_should_roll(int ts, int max_staged, struct pool *pool, struct work *work);
+int not_clone_not_bench(int ts, int max_staged, struct pool *pool, struct work *work);
+void not_get_upstream_work(struct pool **pool, struct curl_ent *ce);
+
+struct work* fun_make_work() { return make_work(); }
+struct pool* fun_select_pool(bool lagging) { return select_pool(lagging); }
 int get_total_control_threads() { return total_control_threads; }
 int get_opt_queue() { return opt_queue; }
+int does_pool_have_stratum(struct pool *pool) { return pool->has_stratum; }
 
-int main_body_body_inside_bool(int *ts, struct pool *cp, int *max_staged, bool *lagging)
+int main_inside_bool(int *ts, struct pool *cp, int *max_staged, bool *lagging)
 {
 	/* If the primary pool is a getwork pool and cannot roll work,
 	 * try to stage one extra work per mining thread */
@@ -9064,12 +9052,6 @@ int main_body_body_inside_bool(int *ts, struct pool *cp, int *max_staged, bool *
 	return *ts <= *max_staged;
 }
 
-struct work* fun_make_work() { return make_work(); }
-struct pool* fun_select_pool(bool lagging) { return select_pool(lagging); }
-void inc_getfail_occasions_and_total_go(struct pool *cp, bool lagging);
-int main_body_body_inside_body_body(
-	int ts, int max_staged, struct pool *pool, struct work *work);
-
 void
 inc_getfail_occasions_and_total_go(struct pool *cp, bool lagging)
 {
@@ -9080,8 +9062,6 @@ inc_getfail_occasions_and_total_go(struct pool *cp, bool lagging)
 		total_go++;
 	}
 }
-
-int does_pool_have_stratum(struct pool *pool) { return pool->has_stratum; }
 
 void
 pool_has_stratum(struct pool *pool, struct work *work)
@@ -9097,7 +9077,6 @@ pool_has_stratum(struct pool *pool, struct work *work)
 	stage_work(work);
 }
 
-int not_should_roll(int ts, int max_staged, struct pool *pool, struct work *work);
 int
 pool_not_has_stratum(int ts, int max_staged, struct pool *pool, struct work *work)
 {
@@ -9132,7 +9111,6 @@ pool_not_has_stratum(int ts, int max_staged, struct pool *pool, struct work *wor
 	return retry_flag;
 }
 
-int not_clone_not_bench(int ts, int max_staged, struct pool *pool, struct work *work);
 int
 not_should_roll(int ts, int max_staged, struct pool *pool, struct work *work)
 {
@@ -9164,25 +9142,7 @@ not_clone_not_bench(int ts, int max_staged, struct pool *pool, struct work *work
 
 	/* obtain new work from bitcoin via JSON-RPC */
 	if (!get_upstream_work(work, ce->curl)) {
-		struct pool *next_pool;
-
-		/* Make sure the pool just hasn't stopped serving
-		* requests but is up as we'll keep hammering it */
-		push_curl_entry(ce, pool);
-		++pool->seq_getfails;
-		pool_died(pool);
-		next_pool = select_pool(!opt_fail_only);
-		if (pool == next_pool) {
-			applog(LOG_DEBUG,
-				"Pool %d json_rpc_call failed on get work, "
-				"retrying in 5s", pool->pool_no);
-			nmsleep(5000);
-		} else {
-			applog(LOG_DEBUG,
-				"Pool %d json_rpc_call failed on get work, "
-				"failover activated", pool->pool_no);
-			pool = next_pool;
-		}
+		not_get_upstream_work(&pool, ce);
 		retry_flag = 1;
 	} else {
 		if (ts >= max_staged) pool_tclear(pool, &pool->lagging);
@@ -9194,4 +9154,28 @@ not_clone_not_bench(int ts, int max_staged, struct pool *pool, struct work *work
 	}
 
 	return retry_flag;
+}
+
+void
+not_get_upstream_work(struct pool **pool, struct curl_ent *ce)
+{
+	struct pool *next_pool;
+
+	/* Make sure the pool just hasn't stopped serving
+	* requests but is up as we'll keep hammering it */
+	push_curl_entry(ce, *pool);
+	++(*pool)->seq_getfails;
+	pool_died(*pool);
+	next_pool = select_pool(!opt_fail_only);
+	if (*pool == next_pool) {
+		applog(LOG_DEBUG,
+			"Pool %d json_rpc_call failed on get work, "
+			"retrying in 5s", (*pool)->pool_no);
+		nmsleep(5000);
+	} else {
+		applog(LOG_DEBUG,
+			"Pool %d json_rpc_call failed on get work, "
+			"failover activated", (*pool)->pool_no);
+		*pool = next_pool;
+	}
 }
