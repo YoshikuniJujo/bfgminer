@@ -29,16 +29,26 @@ notShouldRollBody ts maxStaged pool work = do
 			p' <- if b' then notGetUpstreamWork pool ce else
 				return pool
 			return (p', b')
-					
 
 poolNotHasStratum :: Int -> Int -> Pool -> Work -> IO (Pool, Bool)
 poolNotHasStratum ts maxStaged pool work = do
 	lock <- poolLastWorkLock pool
 	mutexLock lock
-	b <- poolNotHasStratumBody ts maxStaged pool work
+	lastWork <- poolLastWorkCopy pool
+	b <- poolNotHasStratumBody' pool work lastWork
 	mutexUnlock lock
 	if b	then return (pool, False)
 		else notShouldRollBody ts maxStaged pool work
+
+poolNotHasStratumBody' :: Pool -> Work -> Maybe Work -> IO Bool
+poolNotHasStratumBody' pool work (Just lastWork) = do
+	cr <- canRoll lastWork
+	if cr then do
+		sr <- shouldRoll lastWork
+		if sr then mainDoRoll pool work >> return True
+		else mainNoRoll pool lastWork >> return False
+	else mainNoRoll pool lastWork >> return False
+poolNotHasStratumBody' _ _ Nothing = return False
 
 funPoolHasStratum' :: Pool -> Work -> IO ()
 funPoolHasStratum' pool work = do
@@ -63,6 +73,18 @@ funPoolHasStratum' pool work = do
 undef :: a
 undef = undefined
 
+incGetfailOccasionsAndTotalGo' :: Pool -> Bool -> IO ()
+incGetfailOccasionsAndTotalGo' cp True = do
+	cpLagging <- poolLagging cp
+	b <- poolTset cp cpLagging
+	when b $ do
+		pn <- poolPoolNo cp
+		applog logWarning $ "Pool " ++ show pn ++
+			" not providing work fast enough"
+		incPoolGetfailOccasions cp
+		incTotalGo
+incGetfailOccasionsAndTotalGo' _ False = return ()
+
 main :: IO ()
 main = do
 	r <- curlGlobalInit curlGlobalAll
@@ -79,10 +101,13 @@ main = do
 		(cp, ts, maxStaged', lagging') <- doWhile
 			(undef, undef, maxStaged, lagging) $ \(_, _, ms, l) -> do
 				cp_ <- currentPool
+				stgdLock <- getStgdLock
+				mutexLock stgdLock
 				(ts_, ms', l') <- mainInsideBool cp_ ms l
+				mutexUnlock stgdLock
 				return ((cp_, ts_, ms', l'), ts_ > ms')
 		work <- makeWork
-		incGetfailOccasionsAndTotalGo cp lagging'
+		incGetfailOccasionsAndTotalGo' cp lagging'
 		pool <- selectPool lagging'
 		_ <- doWhile pool $ \p -> do
 			hasStratum <- poolHasStratum p

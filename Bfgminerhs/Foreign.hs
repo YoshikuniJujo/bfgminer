@@ -1,5 +1,6 @@
 module Bfgminerhs.Foreign (
 	applog,
+	logWarning,
 	logNotice,
 	logInfo,
 	logDebug,
@@ -17,7 +18,11 @@ module Bfgminerhs.Foreign (
 	mutexLock,
 	mutexUnlock,
 
-	poolNotHasStratumBody,
+	canRoll,
+	shouldRoll,
+	mainDoRoll,
+	mainNoRoll,
+
 	notCloneNotBenchBody,
 	cloneAvailable,
 	freeWork,
@@ -26,9 +31,17 @@ module Bfgminerhs.Foreign (
 	getOptBenchmark,
 	notGetUpstreamWork,
 	mainInsideBool,
+	getStgdLock,
 	currentPool,
 	makeWork,
+
 	incGetfailOccasionsAndTotalGo,
+	poolTset,
+	incPoolGetfailOccasions,
+	incTotalGo,
+	poolLagging,
+	poolPoolNo,
+
 	selectPool,
 	curlGlobalInit,
 	curlGlobalAll,
@@ -52,6 +65,7 @@ data Work = Work { getPtrWork :: Ptr Work }
 data CurlEnt = CurlEnt (Ptr CurlEnt)
 -- data CurlEnt = CurlEnt { getPtrCurlEnt :: Ptr CurlEnt }
 data PThreadMutexT = PThreadMutexT { getPtrPThreadMutexT :: Ptr PThreadMutexT }
+data PBool = PBool (Ptr Bool)
 
 fromCArrayFun :: (CInt -> Ptr CString -> IO a) -> [String] -> IO a
 fromCArrayFun f args = do
@@ -70,7 +84,8 @@ applog logLevel cont = do
 	cCont <- newCString cont
 	cApplog (fromIntegral logLevel) cCont
 
-logNotice, logInfo, logDebug :: Int
+logWarning, logNotice, logInfo, logDebug :: Int
+logWarning = 4
 logNotice = 5
 logInfo = 6
 logDebug = 7
@@ -99,6 +114,7 @@ foreign import ccall "main_initialize" cMainInitialize ::
 
 foreign import ccall "main_inside_bool" cMainInsideBool ::
 	Ptr CInt -> Ptr Pool -> Ptr CInt -> Ptr Bool -> IO ()
+foreign import ccall "get_stgd_lock" cGetStgdLock :: IO (Ptr PThreadMutexT)
 foreign import ccall "current_pool" cCurrentPool :: IO (Ptr Pool)
 
 mainInsideBool :: Pool -> Int -> Bool -> IO (Int, Int, Bool)
@@ -111,6 +127,8 @@ mainInsideBool (Pool p) maxStaged lagging =
 		maxStaged' <- fromIntegral <$> peek pms
 		lagging' <- peek pl
 		return (ts, maxStaged', lagging')
+getStgdLock :: IO PThreadMutexT
+getStgdLock = PThreadMutexT <$> cGetStgdLock
 currentPool :: IO Pool
 currentPool = Pool <$> cCurrentPool
 
@@ -118,6 +136,13 @@ foreign import ccall "wrap_make_work" cMakeWork :: IO (Ptr Work)
 foreign import ccall "wrap_select_pool" cSelectPool :: Bool -> IO (Ptr Pool)
 foreign import ccall "inc_getfail_occasions_and_total_go"
 	cIncGetfailOccasionsAndTotalGo :: Ptr Pool -> Bool -> IO ()
+foreign import ccall "wrap_pool_tset" cPoolTset ::
+	Ptr Pool -> Ptr Bool -> IO Bool
+foreign import ccall "inc_pool_getfail_occasions" cIncPoolGetfailOccasions ::
+	Ptr Pool -> IO ()
+foreign import ccall "inc_total_go" cIncTotalGo :: IO ()
+foreign import ccall "pool_lagging" cPoolLagging :: Ptr Pool -> IO (Ptr Bool)
+foreign import ccall "pool_pool_no" cPoolPoolNo :: Ptr Pool -> IO CInt
 
 makeWork :: IO Work
 makeWork = Work <$> cMakeWork
@@ -125,6 +150,16 @@ selectPool :: Bool -> IO Pool
 selectPool = fmap Pool . cSelectPool
 incGetfailOccasionsAndTotalGo :: Pool -> Bool -> IO ()
 incGetfailOccasionsAndTotalGo = cIncGetfailOccasionsAndTotalGo . getPtrPool
+poolTset :: Pool -> PBool -> IO Bool
+poolTset (Pool pp) (PBool pb) = cPoolTset pp pb
+incPoolGetfailOccasions :: Pool -> IO ()
+incPoolGetfailOccasions = cIncPoolGetfailOccasions . getPtrPool
+incTotalGo :: IO ()
+incTotalGo = cIncTotalGo
+poolLagging :: Pool -> IO PBool
+poolLagging = fmap PBool . cPoolLagging . getPtrPool
+poolPoolNo :: Pool -> IO Int
+poolPoolNo = fmap fromIntegral . cPoolPoolNo . getPtrPool
 
 foreign import ccall "wrap_gen_stratum_work" cGenStratumWork ::
 	Ptr Pool -> Ptr Work -> IO ()
@@ -139,6 +174,20 @@ foreign import ccall "pool_last_work_copy" cPoolLastWorkCopy ::
 
 foreign import ccall "wrap_mutex_lock" cMutexLock :: Ptr PThreadMutexT -> IO ()
 foreign import ccall "wrap_mutex_unlock" cMutexUnlock :: Ptr PThreadMutexT -> IO ()
+
+foreign import ccall "wrap_can_roll" cCanRoll :: Ptr Work -> IO Bool
+foreign import ccall "wrap_should_roll" cShouldRoll :: Ptr Work -> IO Bool
+
+canRoll, shouldRoll :: Work -> IO Bool
+canRoll = cCanRoll . getPtrWork
+shouldRoll = cShouldRoll . getPtrWork
+
+foreign import ccall "main_do_roll" cMainDoRoll :: Ptr Pool -> Ptr Work -> IO ()
+foreign import ccall "main_not_roll" cMainNoRoll :: Ptr Pool -> Ptr Work -> IO ()
+
+mainDoRoll, mainNoRoll :: Pool -> Work -> IO ()
+mainDoRoll (Pool pp) (Work pw) = cMainDoRoll pp pw
+mainNoRoll (Pool pp) (Work pw) = cMainNoRoll pp pw
 
 mutexLock, mutexUnlock :: PThreadMutexT -> IO ()
 mutexLock = cMutexLock . getPtrPThreadMutexT
@@ -158,8 +207,6 @@ poolLastWorkCopy (Pool pp) = do
 	pw <- cPoolLastWorkCopy pp
 	if (pw == nullPtr) then return Nothing else return $ Just $ Work pw
 
-foreign import ccall "pool_not_has_stratum_body" cPoolNotHasStratumBody ::
-	CInt -> CInt -> Ptr Pool -> Ptr Work -> IO Bool
 foreign import ccall "not_clone_not_bench_body" cNotCloneNotBenchBody ::
 	CInt -> CInt -> Ptr Pool -> Ptr Work -> Ptr (Ptr CurlEnt) -> IO Bool
 foreign import ccall "wrap_clone_available" cCloneAvailable :: IO Bool
@@ -169,10 +216,6 @@ foreign import ccall "wrap_stage_work" cStageWork :: Ptr Work -> IO ()
 foreign import ccall "get_opt_benchmark" cGetOptBenchmark :: IO Bool
 foreign import ccall "not_get_upstream_work" cNotGetUpstreamWork ::
 	Ptr (Ptr Pool) -> Ptr CurlEnt -> IO ()
-
-poolNotHasStratumBody :: Int -> Int -> Pool -> Work -> IO Bool
-poolNotHasStratumBody ts maxStaged (Pool p) (Work w) =
-	cPoolNotHasStratumBody (fromIntegral ts) (fromIntegral maxStaged) p w
 
 notCloneNotBenchBody :: Int -> Int -> Pool -> Work -> IO (CurlEnt, Bool)
 notCloneNotBenchBody ts maxStaged (Pool p) (Work w) = alloca $ \pce -> do

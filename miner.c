@@ -9045,10 +9045,13 @@ void wrap_gen_stratum_work(struct pool *pool, struct work *work) {
 }
 void wrap_mutex_lock(pthread_mutex_t *lock) { mutex_lock(lock); }
 void wrap_mutex_unlock(pthread_mutex_t *lock) { mutex_unlock(lock); }
+bool wrap_can_roll(struct work *work) { return can_roll(work); }
+bool wrap_should_roll(struct work *work) { return should_roll(work); }
 
 bool get_opt_benchmark(void) { return opt_benchmark; }
-int get_opt_queue() { return opt_queue; }
-int get_total_control_threads() { return total_control_threads; }
+int get_opt_queue(void) { return opt_queue; }
+int get_total_control_threads(void) { return total_control_threads; }
+pthread_mutex_t* get_stgd_lock(void) { return stgd_lock; }
 
 void
 main_inside_bool(int *ts, struct pool *cp, int *max_staged, bool *lagging)
@@ -9057,8 +9060,6 @@ main_inside_bool(int *ts, struct pool *cp, int *max_staged, bool *lagging)
 	 * try to stage one extra work per mining thread */
 	if (!cp->has_stratum && cp->proto != PLP_GETBLOCKTEMPLATE &&
 		!staged_rollable) *max_staged += mining_threads;
-
-	mutex_lock(stgd_lock);
 
 	*ts = __total_staged();
 
@@ -9070,9 +9071,13 @@ main_inside_bool(int *ts, struct pool *cp, int *max_staged, bool *lagging)
 		pthread_cond_wait(&gws_cond, stgd_lock);
 		*ts = __total_staged();
 	}
-
-	mutex_unlock(stgd_lock);
 }
+
+bool wrap_pool_tset(struct pool *pool, bool *var) { return pool_tset(pool, var); }
+void inc_pool_getfail_occasions(struct pool *pool) { pool->getfail_occasions++; }
+void inc_total_go(void) { total_go++; }
+bool* pool_lagging(struct pool *pool) { &pool->lagging; }
+int pool_pool_no(struct pool *pool) { pool->pool_no; }
 
 void
 inc_getfail_occasions_and_total_go(struct pool *cp, bool lagging)
@@ -9085,23 +9090,23 @@ inc_getfail_occasions_and_total_go(struct pool *cp, bool lagging)
 	}
 }
 
-int
-pool_not_has_stratum_body(
-	int ts, int max_staged, struct pool *pool, struct work *work)
+void
+main_do_roll(struct pool *pool, struct work *work)
 {
-	int should_roll_flag = 0;
+	free_work(work);
+	work = make_clone(pool->last_work_copy);
+	mutex_unlock(&pool->last_work_lock);
+	roll_work(work);
+	applog(LOG_DEBUG, "Generated work from latest GBT job in "
+		"get_work_thread with %d seconds left",
+		(int)blkmk_time_left(work->tmpl, time(NULL)));
+	stage_work(work);
+}
 
-	struct work *last_work = pool->last_work_copy;
-	if (!last_work) {
-	} else if (can_roll(last_work) && should_roll(last_work)) {
-		free_work(work);
-		work = make_clone(pool->last_work_copy);
-		mutex_unlock(&pool->last_work_lock);
-		roll_work(work);
-		applog(LOG_DEBUG, "Generated work from latest GBT job in get_work_thread with %d seconds left", (int)blkmk_time_left(work->tmpl, time(NULL)));
-		stage_work(work);
-		should_roll_flag = 1;
-	} else if (last_work->tmpl && pool->proto == PLP_GETBLOCKTEMPLATE
+void
+main_not_roll(struct pool *pool, struct work *last_work)
+{
+	if (last_work->tmpl && pool->proto == PLP_GETBLOCKTEMPLATE
 		&& blkmk_work_left(last_work->tmpl) >
 			(unsigned long)mining_threads) {
 		// Don't free last_work_copy, since it is used to detect
@@ -9110,8 +9115,6 @@ pool_not_has_stratum_body(
 		free_work(last_work);
 		pool->last_work_copy = NULL;
 	}
-
-	return should_roll_flag;
 }
 
 int
