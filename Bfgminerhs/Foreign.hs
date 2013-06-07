@@ -37,7 +37,11 @@ module Bfgminerhs.Foreign (
 	plpGetblocktemplate,
 	getStagedRollable,
 	getMiningThreads,
-	setLaggingEtc,
+
+	_totalStaged,
+	getOptFailOnly,
+	getGwsCond,
+	pThreadCondWait,
 
 	getStgdLock,
 	currentPool,
@@ -136,16 +140,21 @@ getStagedRollable, getMiningThreads :: IO Int
 getStagedRollable = fromIntegral <$> cGetStagedRollable
 getMiningThreads = fromIntegral <$> cGetMiningThreads
 
-foreign import ccall "set_lagging_etc" cSetLaggingEtc ::
-	Ptr CInt -> Ptr Pool -> CInt -> Ptr Bool -> IO ()
+foreign import ccall "wrap___total_staged" c_TotalStaged :: IO CInt
+foreign import ccall "get_opt_fail_only" cGetOptFailOnly :: IO Bool
+foreign import ccall "get_gws_cond" cGetGwsCond :: IO (Ptr PThreadMutexT)
+foreign import ccall "pthread_cond_wait" cPThreadCondWait ::
+	Ptr PThreadMutexT -> Ptr PThreadMutexT -> IO ()
 
-setLaggingEtc :: Pool -> Int -> Bool -> IO (Int, Bool)
-setLaggingEtc (Pool pp) maxStaged lagging = alloca $ \pts -> alloca $ \pl -> do
-	poke pl lagging
-	cSetLaggingEtc pts pp (fromIntegral maxStaged) pl
-	ts <- peek pts
-	lagging' <- peek pl
-	return (fromIntegral ts, lagging')
+_totalStaged :: IO Int
+_totalStaged = fromIntegral <$> c_TotalStaged
+getOptFailOnly :: IO Bool
+getOptFailOnly = cGetOptFailOnly
+getGwsCond :: IO PThreadMutexT
+getGwsCond = PThreadMutexT <$> cGetGwsCond
+pThreadCondWait :: PThreadMutexT -> PThreadMutexT -> IO ()
+pThreadCondWait (PThreadMutexT cond) (PThreadMutexT lock) =
+	cPThreadCondWait cond lock
 
 getStgdLock :: IO PThreadMutexT
 getStgdLock = PThreadMutexT <$> cGetStgdLock

@@ -73,8 +73,8 @@ funPoolHasStratum' pool work = do
 undef :: a
 undef = undefined
 
-incGetfailOccasionsAndTotalGo' :: Pool -> Bool -> IO ()
-incGetfailOccasionsAndTotalGo' cp True = do
+incGetfailOccasionsAndTotalGo :: Pool -> Bool -> IO ()
+incGetfailOccasionsAndTotalGo cp True = do
 	cpLagging <- poolLagging cp
 	b <- poolTset cp cpLagging
 	when b $ do
@@ -83,7 +83,7 @@ incGetfailOccasionsAndTotalGo' cp True = do
 			" not providing work fast enough"
 		incPoolGetfailOccasions cp
 		incTotalGo
-incGetfailOccasionsAndTotalGo' _ False = return ()
+incGetfailOccasionsAndTotalGo _ False = return ()
 
 enlargeMaxStaged :: Pool -> Int -> IO Int
 enlargeMaxStaged cp maxStaged = do
@@ -97,6 +97,27 @@ enlargeMaxStaged cp maxStaged = do
 			_ -> do	sr <- getStagedRollable
 				if sr /= 0 then return maxStaged
 				else (maxStaged +) <$> getMiningThreads
+
+setLaggingEtc :: Pool -> Int -> Bool -> IO (Int, Bool)
+setLaggingEtc cp maxStaged lagging = do
+	ts <- _totalStaged
+	phs <- poolHasStratum cp
+	lagging' <- if phs then return lagging else do
+		pp <- poolProto cp
+		case pp of
+			PlpGetblocktemplate -> return lagging
+			_ -> if ts /= 0 then return lagging else do
+				fo <- getOptFailOnly
+				if fo then return lagging else return True
+	-- Wait until hash_pop tells us we need to create more work
+	ts' <- if ts > maxStaged then do
+			gc <- getGwsCond
+			sl <- getStgdLock
+			pThreadCondWait gc sl
+			_totalStaged
+		else return ts
+	return (ts', lagging')
+		
 
 main :: IO ()
 main = do
@@ -121,7 +142,7 @@ main = do
 				mutexUnlock stgdLock
 				return ((cp_, ts_, ms', l'), ts_ > ms')
 		work <- makeWork
-		incGetfailOccasionsAndTotalGo' cp lagging'
+		incGetfailOccasionsAndTotalGo cp lagging'
 		pool <- selectPool lagging'
 		_ <- doWhile pool $ \p -> do
 			hasStratum <- poolHasStratum p

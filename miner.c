@@ -9027,12 +9027,15 @@ begin_bench:
  *                    main loop                             *
  ************************************************************/
 
+int pool_pool_no(struct pool *pool) { return pool->pool_no; }
+bool* pool_lagging(struct pool *pool) { return &pool->lagging; }
+enum pool_protocol pool_proto(struct pool *pool) { return pool->proto; }
+void inc_pool_getfail_occasions(struct pool *pool) { pool->getfail_occasions++; }
 bool pool_has_stratum(struct pool *pool) { return pool->has_stratum; }
 bool pool_stratum_active(struct pool *pool) { return pool->stratum_active; }
 bool pool_stratum_notify(struct pool *pool) { return pool->stratum_notify; }
 pthread_mutex_t* pool_last_work_lock(struct pool *pool) {
-	return &pool->last_work_lock;
-}
+	return &pool->last_work_lock; }
 struct work* pool_last_work_copy(struct pool *pool) { pool->last_work_copy; }
 
 struct work* wrap_make_work(void) { return make_work(); }
@@ -9041,43 +9044,27 @@ bool wrap_clone_available(void) { return clone_available(); }
 void wrap_get_benchmark_work(struct work *work) { get_benchmark_work(work); }
 void wrap_stage_work(struct work *work) { stage_work(work); }
 void wrap_gen_stratum_work(struct pool *pool, struct work *work) {
-	gen_stratum_work(pool, work);
-}
+	gen_stratum_work(pool, work); }
 void wrap_mutex_lock(pthread_mutex_t *lock) { mutex_lock(lock); }
 void wrap_mutex_unlock(pthread_mutex_t *lock) { mutex_unlock(lock); }
 bool wrap_can_roll(struct work *work) { return can_roll(work); }
 bool wrap_should_roll(struct work *work) { return should_roll(work); }
+bool wrap_pool_tset(struct pool *pool, bool *var) { return pool_tset(pool, var); }
+int wrap___total_staged(void) { return __total_staged(); }
 
 bool get_opt_benchmark(void) { return opt_benchmark; }
 int get_opt_queue(void) { return opt_queue; }
+bool get_opt_fail_only(void) { return opt_fail_only; }
+
 int get_total_control_threads(void) { return total_control_threads; }
 pthread_mutex_t* get_stgd_lock(void) { return stgd_lock; }
-
-bool wrap_pool_tset(struct pool *pool, bool *var) { return pool_tset(pool, var); }
-void inc_pool_getfail_occasions(struct pool *pool) { pool->getfail_occasions++; }
-void inc_total_go(void) { total_go++; }
-bool* pool_lagging(struct pool *pool) { return &pool->lagging; }
-int pool_pool_no(struct pool *pool) { return pool->pool_no; }
-
-enum pool_protocol pool_proto(struct pool *pool) { return pool->proto; }
-enum pool_protocol plp_getblocktemplate(void) { return PLP_GETBLOCKTEMPLATE; }
 int get_staged_rollable(void) { return staged_rollable; }
 int get_mining_threads(void) { return mining_threads; }
+pthread_cond_t* get_gws_cond(void) { return &gws_cond; }
 
-void
-set_lagging_etc(int *ts, struct pool *cp, int max_staged, bool *lagging)
-{
-	*ts = __total_staged();
+void inc_total_go(void) { total_go++; }
 
-	if (!cp->has_stratum && cp->proto != PLP_GETBLOCKTEMPLATE &&
-		!*ts && !opt_fail_only) *lagging = true;
-
-	/* Wait until hash_pop tells us we need to create more work */
-	if (*ts > max_staged) {
-		pthread_cond_wait(&gws_cond, stgd_lock);
-		*ts = __total_staged();
-	}
-}
+enum pool_protocol plp_getblocktemplate(void) { return PLP_GETBLOCKTEMPLATE; }
 
 void
 main_do_roll(struct pool *pool, struct work *work)
