@@ -33,7 +33,10 @@ notShouldRollBody ts maxStaged pool work = do
 
 poolNotHasStratum :: Int -> Int -> Pool -> Work -> IO (Pool, Bool)
 poolNotHasStratum ts maxStaged pool work = do
+	lock <- poolLastWorkLock pool
+	mutexLock lock
 	b <- poolNotHasStratumBody ts maxStaged pool work
+	mutexUnlock lock
 	if b	then return (pool, False)
 		else notShouldRollBody ts maxStaged pool work
 
@@ -82,14 +85,15 @@ main = do
 		incGetfailOccasionsAndTotalGo cp lagging'
 		pool <- selectPool lagging'
 		_ <- doWhile pool $ \p -> do
-			hasStratum <- doesPoolHaveStratum p
+			hasStratum <- poolHasStratum p
 			if hasStratum
 				then do	funPoolHasStratum' p work
 					return (p, False)
-				else do b <- doesExistLastWorkCopy p
-					if b then poolNotHasStratum ts
+				else do b <- poolLastWorkCopy p
+					case b of
+						Just _ -> poolNotHasStratum ts
 							maxStaged' p work
-						else return (p, False)
+						_ -> return (p, False)
 		return (maxStaged', lagging')
 
 	curlGlobalCleanup

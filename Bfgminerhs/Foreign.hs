@@ -5,14 +5,18 @@ module Bfgminerhs.Foreign (
 	logDebug,
 
 	mainInitialize,
-	doesPoolHaveStratum,
 
 	genStratumWork,
+
 	poolHasStratum,
 	poolStratumActive,
 	poolStratumNotify,
+	poolLastWorkLock,
+	poolLastWorkCopy,
 
-	doesExistLastWorkCopy,
+	mutexLock,
+	mutexUnlock,
+
 	poolNotHasStratumBody,
 	notCloneNotBenchBody,
 	cloneAvailable,
@@ -41,11 +45,13 @@ import Foreign.C
 import Foreign.Ptr
 import Foreign.Marshal (alloca, allocaArray, pokeArray)
 import Foreign.Storable
+-- import Data.Maybe
 	
 data Pool = Pool { getPtrPool :: Ptr Pool } deriving Eq
 data Work = Work { getPtrWork :: Ptr Work }
 data CurlEnt = CurlEnt (Ptr CurlEnt)
 -- data CurlEnt = CurlEnt { getPtrCurlEnt :: Ptr CurlEnt }
+data PThreadMutexT = PThreadMutexT { getPtrPThreadMutexT :: Ptr PThreadMutexT }
 
 fromCArrayFun :: (CInt -> Ptr CString -> IO a) -> [String] -> IO a
 fromCArrayFun f args = do
@@ -120,24 +126,38 @@ selectPool = fmap Pool . cSelectPool
 incGetfailOccasionsAndTotalGo :: Pool -> Bool -> IO ()
 incGetfailOccasionsAndTotalGo = cIncGetfailOccasionsAndTotalGo . getPtrPool
 
-foreign import ccall "does_pool_have_stratum" cDoesPoolHaveStratum ::
-	Ptr Pool -> IO Bool
-
 foreign import ccall "wrap_gen_stratum_work" cGenStratumWork ::
 	Ptr Pool -> Ptr Work -> IO ()
+
 foreign import ccall "pool_has_stratum" cPoolHasStratum :: Ptr Pool -> IO Bool
 foreign import ccall "pool_stratum_active" cPoolStratumActive :: Ptr Pool -> IO Bool
 foreign import ccall "pool_stratum_notify" cPoolStratumNotify :: Ptr Pool -> IO Bool
+foreign import ccall "pool_last_work_lock" cPoolLastWorkLock ::
+	Ptr Pool -> IO (Ptr PThreadMutexT)
+foreign import ccall "pool_last_work_copy" cPoolLastWorkCopy ::
+	Ptr Pool -> IO (Ptr Work)
+
+foreign import ccall "wrap_mutex_lock" cMutexLock :: Ptr PThreadMutexT -> IO ()
+foreign import ccall "wrap_mutex_unlock" cMutexUnlock :: Ptr PThreadMutexT -> IO ()
+
+mutexLock, mutexUnlock :: PThreadMutexT -> IO ()
+mutexLock = cMutexLock . getPtrPThreadMutexT
+mutexUnlock = cMutexUnlock . getPtrPThreadMutexT
 
 genStratumWork :: Pool -> Work -> IO ()
 genStratumWork (Pool pp) (Work pw) = cGenStratumWork pp pw
+
 poolHasStratum, poolStratumActive, poolStratumNotify :: Pool -> IO Bool
 poolHasStratum = cPoolHasStratum . getPtrPool
 poolStratumActive = cPoolStratumActive . getPtrPool
 poolStratumNotify = cPoolStratumNotify . getPtrPool
+poolLastWorkLock :: Pool -> IO PThreadMutexT
+poolLastWorkLock = fmap PThreadMutexT . cPoolLastWorkLock . getPtrPool
+poolLastWorkCopy :: Pool -> IO (Maybe Work)
+poolLastWorkCopy (Pool pp) = do
+	pw <- cPoolLastWorkCopy pp
+	if (pw == nullPtr) then return Nothing else return $ Just $ Work pw
 
-foreign import ccall "does_exist_last_work_copy" cDoesExistLastWorkCopy ::
-	Ptr Pool -> IO Bool
 foreign import ccall "pool_not_has_stratum_body" cPoolNotHasStratumBody ::
 	CInt -> CInt -> Ptr Pool -> Ptr Work -> IO Bool
 foreign import ccall "not_clone_not_bench_body" cNotCloneNotBenchBody ::
@@ -150,10 +170,6 @@ foreign import ccall "get_opt_benchmark" cGetOptBenchmark :: IO Bool
 foreign import ccall "not_get_upstream_work" cNotGetUpstreamWork ::
 	Ptr (Ptr Pool) -> Ptr CurlEnt -> IO ()
 
-doesPoolHaveStratum :: Pool -> IO Bool
-doesPoolHaveStratum = cDoesPoolHaveStratum . getPtrPool
-doesExistLastWorkCopy :: Pool -> IO Bool
-doesExistLastWorkCopy = cDoesExistLastWorkCopy . getPtrPool
 poolNotHasStratumBody :: Int -> Int -> Pool -> Work -> IO Bool
 poolNotHasStratumBody ts maxStaged (Pool p) (Work w) =
 	cPoolNotHasStratumBody (fromIntegral ts) (fromIntegral maxStaged) p w

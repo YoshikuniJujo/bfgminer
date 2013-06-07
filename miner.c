@@ -9027,16 +9027,28 @@ begin_bench:
  *                    main loop                             *
  ************************************************************/
 
+bool pool_has_stratum(struct pool *pool) { return pool->has_stratum; }
+bool pool_stratum_active(struct pool *pool) { return pool->stratum_active; }
+bool pool_stratum_notify(struct pool *pool) { return pool->stratum_notify; }
+pthread_mutex_t* pool_last_work_lock(struct pool *pool) {
+	return &pool->last_work_lock;
+}
+struct work* pool_last_work_copy(struct pool *pool) { pool->last_work_copy; }
+
 struct work* wrap_make_work(void) { return make_work(); }
 struct pool* wrap_select_pool(bool lagging) { return select_pool(lagging); }
 bool wrap_clone_available(void) { return clone_available(); }
 void wrap_get_benchmark_work(struct work *work) { get_benchmark_work(work); }
 void wrap_stage_work(struct work *work) { stage_work(work); }
+void wrap_gen_stratum_work(struct pool *pool, struct work *work) {
+	gen_stratum_work(pool, work);
+}
+void wrap_mutex_lock(pthread_mutex_t *lock) { mutex_lock(lock); }
+void wrap_mutex_unlock(pthread_mutex_t *lock) { mutex_unlock(lock); }
+
 bool get_opt_benchmark(void) { return opt_benchmark; }
-int get_total_control_threads() { return total_control_threads; }
 int get_opt_queue() { return opt_queue; }
-int does_pool_have_stratum(struct pool *pool) { return pool->has_stratum; }
-int does_exist_last_work_copy(struct pool *pool) { pool->last_work_copy; }
+int get_total_control_threads() { return total_control_threads; }
 
 void
 main_inside_bool(int *ts, struct pool *cp, int *max_staged, bool *lagging)
@@ -9073,20 +9085,11 @@ inc_getfail_occasions_and_total_go(struct pool *cp, bool lagging)
 	}
 }
 
-bool pool_has_stratum(struct pool *pool) { return pool->has_stratum; }
-bool pool_stratum_active(struct pool *pool) { return pool->stratum_active; }
-bool pool_stratum_notify(struct pool *pool) { return pool->stratum_notify; }
-void wrap_gen_stratum_work(struct pool *pool, struct work *work) {
-	return gen_stratum_work(pool, work);
-}
-
 int
 pool_not_has_stratum_body(
 	int ts, int max_staged, struct pool *pool, struct work *work)
 {
 	int should_roll_flag = 0;
-
-	mutex_lock(&pool->last_work_lock);
 
 	struct work *last_work = pool->last_work_copy;
 	if (!last_work) {
@@ -9107,8 +9110,6 @@ pool_not_has_stratum_body(
 		free_work(last_work);
 		pool->last_work_copy = NULL;
 	}
-
-	mutex_unlock(&pool->last_work_lock);
 
 	return should_roll_flag;
 }
