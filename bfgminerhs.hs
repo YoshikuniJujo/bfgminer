@@ -85,6 +85,19 @@ incGetfailOccasionsAndTotalGo' cp True = do
 		incTotalGo
 incGetfailOccasionsAndTotalGo' _ False = return ()
 
+enlargeMaxStaged :: Pool -> Int -> IO Int
+enlargeMaxStaged cp maxStaged = do
+	-- If the primary pool is a getwork pool and cannot roll work,
+	-- try to stage one extra work per mining thread
+	phs <- poolHasStratum cp
+	if phs then return maxStaged else do
+		pp <- poolProto cp
+		case pp of
+			PlpGetblocktemplate -> return maxStaged
+			_ -> do	sr <- getStagedRollable
+				if sr /= 0 then return maxStaged
+				else (maxStaged +) <$> getMiningThreads
+
 main :: IO ()
 main = do
 	r <- curlGlobalInit curlGlobalAll

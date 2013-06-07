@@ -1,4 +1,6 @@
 module Bfgminerhs.Foreign (
+	PoolProtocol(..),
+
 	applog,
 	logWarning,
 	logNotice,
@@ -30,9 +32,13 @@ module Bfgminerhs.Foreign (
 	getBenchmarkWork,
 	getOptBenchmark,
 	notGetUpstreamWork,
-	enlargeMaxStaged,
+
+	poolProto,
+	plpGetblocktemplate,
+	getStagedRollable,
+	getMiningThreads,
 	setLaggingEtc,
---	mainInsideBool,
+
 	getStgdLock,
 	currentPool,
 	makeWork,
@@ -67,6 +73,7 @@ data CurlEnt = CurlEnt (Ptr CurlEnt)
 -- data CurlEnt = CurlEnt { getPtrCurlEnt :: Ptr CurlEnt }
 data PThreadMutexT = PThreadMutexT { getPtrPThreadMutexT :: Ptr PThreadMutexT }
 data PBool = PBool (Ptr Bool)
+data PoolProtocol = PlpNone | PlpGetwork | PlpGetblocktemplate deriving Enum
 
 fromCArrayFun :: (CInt -> Ptr CString -> IO a) -> [String] -> IO a
 fromCArrayFun f args = do
@@ -115,14 +122,22 @@ foreign import ccall "main_initialize" cMainInitialize ::
 
 foreign import ccall "get_stgd_lock" cGetStgdLock :: IO (Ptr PThreadMutexT)
 foreign import ccall "current_pool" cCurrentPool :: IO (Ptr Pool)
-foreign import ccall "enlarge_max_staged" cEnlargeMaxStaged ::
-	Ptr Pool -> CInt -> IO CInt
+
+foreign import ccall "pool_proto" cPoolProto :: Ptr Pool -> IO CInt
+foreign import ccall "plp_getblocktemplate" cPlpGetblocktemplate :: CInt
+foreign import ccall "get_staged_rollable" cGetStagedRollable :: IO CInt
+foreign import ccall "get_mining_threads" cGetMiningThreads :: IO CInt
+
+poolProto :: Pool -> IO PoolProtocol
+poolProto = fmap (toEnum . fromIntegral) . cPoolProto . getPtrPool
+plpGetblocktemplate :: PoolProtocol
+plpGetblocktemplate = toEnum $ fromIntegral $ cPlpGetblocktemplate
+getStagedRollable, getMiningThreads :: IO Int
+getStagedRollable = fromIntegral <$> cGetStagedRollable
+getMiningThreads = fromIntegral <$> cGetMiningThreads
+
 foreign import ccall "set_lagging_etc" cSetLaggingEtc ::
 	Ptr CInt -> Ptr Pool -> CInt -> Ptr Bool -> IO ()
-
-enlargeMaxStaged :: Pool -> Int -> IO Int
-enlargeMaxStaged (Pool pp) =
-	fmap fromIntegral . cEnlargeMaxStaged pp . fromIntegral
 
 setLaggingEtc :: Pool -> Int -> Bool -> IO (Int, Bool)
 setLaggingEtc (Pool pp) maxStaged lagging = alloca $ \pts -> alloca $ \pl -> do

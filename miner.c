@@ -9056,18 +9056,13 @@ pthread_mutex_t* get_stgd_lock(void) { return stgd_lock; }
 bool wrap_pool_tset(struct pool *pool, bool *var) { return pool_tset(pool, var); }
 void inc_pool_getfail_occasions(struct pool *pool) { pool->getfail_occasions++; }
 void inc_total_go(void) { total_go++; }
-bool* pool_lagging(struct pool *pool) { &pool->lagging; }
-int pool_pool_no(struct pool *pool) { pool->pool_no; }
+bool* pool_lagging(struct pool *pool) { return &pool->lagging; }
+int pool_pool_no(struct pool *pool) { return pool->pool_no; }
 
-int
-enlarge_max_staged(struct pool *cp, int max_staged)
-{
-	/* If the primary pool is a getwork pool and cannot roll work,
-	 * try to stage one extra work per mining thread */
-	if (!cp->has_stratum && cp->proto != PLP_GETBLOCKTEMPLATE &&
-		!staged_rollable) max_staged += mining_threads;
-	return max_staged;
-}
+enum pool_protocol pool_proto(struct pool *pool) { return pool->proto; }
+enum pool_protocol plp_getblocktemplate(void) { return PLP_GETBLOCKTEMPLATE; }
+int get_staged_rollable(void) { return staged_rollable; }
+int get_mining_threads(void) { return mining_threads; }
 
 void
 set_lagging_etc(int *ts, struct pool *cp, int max_staged, bool *lagging)
