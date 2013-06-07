@@ -111,17 +111,25 @@ getTotalControlThreads = fromIntegral <$> cGetTotalControlThreads
 foreign import ccall "main_initialize" cMainInitialize ::
 	CInt -> Ptr CString -> IO ()
 
-foreign import ccall "main_inside_bool" cMainInsideBool ::
-	Ptr CInt -> Ptr Pool -> Ptr CInt -> Ptr Bool -> IO ()
 foreign import ccall "get_stgd_lock" cGetStgdLock :: IO (Ptr PThreadMutexT)
 foreign import ccall "current_pool" cCurrentPool :: IO (Ptr Pool)
+foreign import ccall "enlarge_max_staged" cEnlargeMaxStaged ::
+	Ptr Pool -> CInt -> IO CInt
+foreign import ccall "set_lagging_etc" cSetLaggingEtc ::
+	Ptr CInt -> Ptr Pool -> CInt -> Ptr Bool -> IO ()
+
+cMainInsideBool' :: Ptr CInt -> Ptr Pool -> Ptr CInt -> Ptr Bool -> IO ()
+cMainInsideBool' ts cp maxStaged lagging = do
+	ms <- peek maxStaged
+	maxStaged' <- cEnlargeMaxStaged cp ms
+	cSetLaggingEtc ts cp maxStaged' lagging
 
 mainInsideBool :: Pool -> Int -> Bool -> IO (Int, Int, Bool)
 mainInsideBool (Pool p) maxStaged lagging =
 	alloca $ \pts -> alloca $ \pms -> alloca $ \pl -> do
 		poke pms $ fromIntegral maxStaged
 		poke pl lagging
-		cMainInsideBool pts p pms pl
+		cMainInsideBool' pts p pms pl
 		ts <- fromIntegral <$> peek pts
 		maxStaged' <- fromIntegral <$> peek pms
 		lagging' <- peek pl

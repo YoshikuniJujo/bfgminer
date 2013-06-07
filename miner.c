@@ -9053,31 +9053,36 @@ int get_opt_queue(void) { return opt_queue; }
 int get_total_control_threads(void) { return total_control_threads; }
 pthread_mutex_t* get_stgd_lock(void) { return stgd_lock; }
 
-void
-main_inside_bool(int *ts, struct pool *cp, int *max_staged, bool *lagging)
+bool wrap_pool_tset(struct pool *pool, bool *var) { return pool_tset(pool, var); }
+void inc_pool_getfail_occasions(struct pool *pool) { pool->getfail_occasions++; }
+void inc_total_go(void) { total_go++; }
+bool* pool_lagging(struct pool *pool) { &pool->lagging; }
+int pool_pool_no(struct pool *pool) { pool->pool_no; }
+
+int
+enlarge_max_staged(struct pool *cp, int max_staged)
 {
 	/* If the primary pool is a getwork pool and cannot roll work,
 	 * try to stage one extra work per mining thread */
 	if (!cp->has_stratum && cp->proto != PLP_GETBLOCKTEMPLATE &&
-		!staged_rollable) *max_staged += mining_threads;
+		!staged_rollable) max_staged += mining_threads;
+	return max_staged;
+}
 
+void
+set_lagging_etc(int *ts, struct pool *cp, int max_staged, bool *lagging)
+{
 	*ts = __total_staged();
 
 	if (!cp->has_stratum && cp->proto != PLP_GETBLOCKTEMPLATE &&
 		!*ts && !opt_fail_only) *lagging = true;
 
 	/* Wait until hash_pop tells us we need to create more work */
-	if (*ts > *max_staged) {
+	if (*ts > max_staged) {
 		pthread_cond_wait(&gws_cond, stgd_lock);
 		*ts = __total_staged();
 	}
 }
-
-bool wrap_pool_tset(struct pool *pool, bool *var) { return pool_tset(pool, var); }
-void inc_pool_getfail_occasions(struct pool *pool) { pool->getfail_occasions++; }
-void inc_total_go(void) { total_go++; }
-bool* pool_lagging(struct pool *pool) { &pool->lagging; }
-int pool_pool_no(struct pool *pool) { pool->pool_no; }
 
 void
 main_do_roll(struct pool *pool, struct work *work)
