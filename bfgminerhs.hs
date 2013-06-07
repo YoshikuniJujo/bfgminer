@@ -103,7 +103,8 @@ main = do
 				cp_ <- currentPool
 				stgdLock <- getStgdLock
 				mutexLock stgdLock
-				(ts_, ms', l') <- mainInsideBool cp_ ms l
+				ms' <- enlargeMaxStaged cp_ ms
+				(ts_, l') <- setLaggingEtc cp_ ms' l
 				mutexUnlock stgdLock
 				return ((cp_, ts_, ms', l'), ts_ > ms')
 		work <- makeWork

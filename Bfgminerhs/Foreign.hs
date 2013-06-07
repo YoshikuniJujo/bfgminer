@@ -30,7 +30,9 @@ module Bfgminerhs.Foreign (
 	getBenchmarkWork,
 	getOptBenchmark,
 	notGetUpstreamWork,
-	mainInsideBool,
+	enlargeMaxStaged,
+	setLaggingEtc,
+--	mainInsideBool,
 	getStgdLock,
 	currentPool,
 	makeWork,
@@ -118,22 +120,18 @@ foreign import ccall "enlarge_max_staged" cEnlargeMaxStaged ::
 foreign import ccall "set_lagging_etc" cSetLaggingEtc ::
 	Ptr CInt -> Ptr Pool -> CInt -> Ptr Bool -> IO ()
 
-cMainInsideBool' :: Ptr CInt -> Ptr Pool -> Ptr CInt -> Ptr Bool -> IO ()
-cMainInsideBool' ts cp maxStaged lagging = do
-	ms <- peek maxStaged
-	maxStaged' <- cEnlargeMaxStaged cp ms
-	cSetLaggingEtc ts cp maxStaged' lagging
+enlargeMaxStaged :: Pool -> Int -> IO Int
+enlargeMaxStaged (Pool pp) =
+	fmap fromIntegral . cEnlargeMaxStaged pp . fromIntegral
 
-mainInsideBool :: Pool -> Int -> Bool -> IO (Int, Int, Bool)
-mainInsideBool (Pool p) maxStaged lagging =
-	alloca $ \pts -> alloca $ \pms -> alloca $ \pl -> do
-		poke pms $ fromIntegral maxStaged
-		poke pl lagging
-		cMainInsideBool' pts p pms pl
-		ts <- fromIntegral <$> peek pts
-		maxStaged' <- fromIntegral <$> peek pms
-		lagging' <- peek pl
-		return (ts, maxStaged', lagging')
+setLaggingEtc :: Pool -> Int -> Bool -> IO (Int, Bool)
+setLaggingEtc (Pool pp) maxStaged lagging = alloca $ \pts -> alloca $ \pl -> do
+	poke pl lagging
+	cSetLaggingEtc pts pp (fromIntegral maxStaged) pl
+	ts <- peek pts
+	lagging' <- peek pl
+	return (fromIntegral ts, lagging')
+
 getStgdLock :: IO PThreadMutexT
 getStgdLock = PThreadMutexT <$> cGetStgdLock
 currentPool :: IO Pool
