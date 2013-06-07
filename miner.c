@@ -9080,17 +9080,6 @@ bool* pool_lagging(struct pool *pool) { &pool->lagging; }
 int pool_pool_no(struct pool *pool) { pool->pool_no; }
 
 void
-inc_getfail_occasions_and_total_go(struct pool *cp, bool lagging)
-{
-	if (lagging && !pool_tset(cp, &cp->lagging)) {
-		applog(LOG_WARNING, "Pool %d not providing work fast enough",
-			cp->pool_no);
-		cp->getfail_occasions++;
-		total_go++;
-	}
-}
-
-void
 main_do_roll(struct pool *pool, struct work *work)
 {
 	free_work(work);

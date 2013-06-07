@@ -35,7 +35,6 @@ module Bfgminerhs.Foreign (
 	currentPool,
 	makeWork,
 
-	incGetfailOccasionsAndTotalGo,
 	poolTset,
 	incPoolGetfailOccasions,
 	incTotalGo,
@@ -134,8 +133,6 @@ currentPool = Pool <$> cCurrentPool
 
 foreign import ccall "wrap_make_work" cMakeWork :: IO (Ptr Work)
 foreign import ccall "wrap_select_pool" cSelectPool :: Bool -> IO (Ptr Pool)
-foreign import ccall "inc_getfail_occasions_and_total_go"
-	cIncGetfailOccasionsAndTotalGo :: Ptr Pool -> Bool -> IO ()
 foreign import ccall "wrap_pool_tset" cPoolTset ::
 	Ptr Pool -> Ptr Bool -> IO Bool
 foreign import ccall "inc_pool_getfail_occasions" cIncPoolGetfailOccasions ::
@@ -148,8 +145,6 @@ makeWork :: IO Work
 makeWork = Work <$> cMakeWork
 selectPool :: Bool -> IO Pool
 selectPool = fmap Pool . cSelectPool
-incGetfailOccasionsAndTotalGo :: Pool -> Bool -> IO ()
-incGetfailOccasionsAndTotalGo = cIncGetfailOccasionsAndTotalGo . getPtrPool
 poolTset :: Pool -> PBool -> IO Bool
 poolTset (Pool pp) (PBool pb) = cPoolTset pp pb
 incPoolGetfailOccasions :: Pool -> IO ()
