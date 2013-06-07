@@ -135,7 +135,7 @@ foreign import ccall "get_mining_threads" cGetMiningThreads :: IO CInt
 poolProto :: Pool -> IO PoolProtocol
 poolProto = fmap (toEnum . fromIntegral) . cPoolProto . getPtrPool
 plpGetblocktemplate :: PoolProtocol
-plpGetblocktemplate = toEnum $ fromIntegral $ cPlpGetblocktemplate
+plpGetblocktemplate = toEnum $ fromIntegral cPlpGetblocktemplate
 getStagedRollable, getMiningThreads :: IO Int
 getStagedRollable = fromIntegral <$> cGetStagedRollable
 getMiningThreads = fromIntegral <$> cGetMiningThreads
@@ -230,7 +230,7 @@ poolLastWorkLock = fmap PThreadMutexT . cPoolLastWorkLock . getPtrPool
 poolLastWorkCopy :: Pool -> IO (Maybe Work)
 poolLastWorkCopy (Pool pp) = do
 	pw <- cPoolLastWorkCopy pp
-	if (pw == nullPtr) then return Nothing else return $ Just $ Work pw
+	return $ if pw == nullPtr then Nothing else Just $ Work pw
 
 foreign import ccall "not_clone_not_bench_body" cNotCloneNotBenchBody ::
 	CInt -> CInt -> Ptr Pool -> Ptr Work -> Ptr (Ptr CurlEnt) -> IO Bool

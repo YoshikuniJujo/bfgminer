@@ -35,23 +35,23 @@ poolNotHasStratum ts maxStaged pool work = do
 	lock <- poolLastWorkLock pool
 	mutexLock lock
 	lastWork <- poolLastWorkCopy pool
-	b <- poolNotHasStratumBody' pool work lastWork
+	b <- poolNotHasStratumBody pool work lastWork
 	mutexUnlock lock
 	if b	then return (pool, False)
 		else notShouldRollBody ts maxStaged pool work
 
-poolNotHasStratumBody' :: Pool -> Work -> Maybe Work -> IO Bool
-poolNotHasStratumBody' pool work (Just lastWork) = do
+poolNotHasStratumBody :: Pool -> Work -> Maybe Work -> IO Bool
+poolNotHasStratumBody pool work (Just lastWork) = do
 	cr <- canRoll lastWork
 	if cr then do
 		sr <- shouldRoll lastWork
 		if sr then mainDoRoll pool work >> return True
 		else mainNoRoll pool lastWork >> return False
 	else mainNoRoll pool lastWork >> return False
-poolNotHasStratumBody' _ _ Nothing = return False
+poolNotHasStratumBody _ _ Nothing = return False
 
-funPoolHasStratum' :: Pool -> Work -> IO ()
-funPoolHasStratum' pool work = do
+funPoolHasStratum :: Pool -> Work -> IO ()
+funPoolHasStratum pool work = do
 	pool' <- while pool check $ \p -> do
 		altpool <- selectPool True
 		when (altpool == p) $ threadDelay 5000000
@@ -64,10 +64,7 @@ funPoolHasStratum' pool work = do
 		b0 <- poolHasStratum p
 		if b0 then do
 			b1 <- poolStratumActive p
-			if b1 then do
-				b2 <- poolStratumNotify p
-				if b2 then return False else return True
-			else return True
+			if b1 then not <$> poolStratumNotify p else return True
 		else return False
 
 undef :: a
@@ -108,7 +105,7 @@ setLaggingEtc cp maxStaged lagging = do
 			PlpGetblocktemplate -> return lagging
 			_ -> if ts /= 0 then return lagging else do
 				fo <- getOptFailOnly
-				if fo then return lagging else return True
+				return $ not fo || lagging
 	-- Wait until hash_pop tells us we need to create more work
 	ts' <- if ts > maxStaged then do
 			gc <- getGwsCond
@@ -147,7 +144,7 @@ main = do
 		_ <- doWhile pool $ \p -> do
 			hasStratum <- poolHasStratum p
 			if hasStratum
-				then do	funPoolHasStratum' p work
+				then do	funPoolHasStratum p work
 					return (p, False)
 				else do b <- poolLastWorkCopy p
 					case b of
