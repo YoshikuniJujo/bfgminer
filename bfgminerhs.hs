@@ -10,17 +10,55 @@ import Control.Concurrent (threadDelay)
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad (when)
 
+notShouldRollBody :: Int -> Int -> Pool -> Work -> IO (Pool, Bool)
+notShouldRollBody ts maxStaged pool work = do
+	ca <- cloneAvailable
+	if ca then do
+		applog logDebug "Cloned getwork work"
+		freeWork work
+		return (pool, False)
+	else do
+		ob <- getOptBenchmark
+		if ob then do
+			getBenchmarkWork work
+			applog logDebug "Generated benchmark work"
+			stageWork work
+			return (pool, False)
+		else do
+			(ce, b') <- notCloneNotBenchBody ts maxStaged pool work
+			p' <- if b' then notGetUpstreamWork pool ce else
+				return pool
+			return (p', b')
+					
+
 poolNotHasStratum :: Int -> Int -> Pool -> Work -> IO (Pool, Bool)
 poolNotHasStratum ts maxStaged pool work = do
 	b <- poolNotHasStratumBody ts maxStaged pool work
-	(pool', retry) <- if b then return (pool, False) else do
-		ncnb <- notShouldRollBody pool work
-		if not ncnb then return (pool, False) else do
-			(ce, b) <- notCloneNotBenchBody ts maxStaged pool work
-			p' <- if b then notGetUpstreamWork pool ce else
-				return pool
-			return (p', b)
-	return (pool, retry)
+	if b	then return (pool, False)
+		else notShouldRollBody ts maxStaged pool work
+
+funPoolHasStratum' :: Pool -> Work -> IO ()
+funPoolHasStratum' pool work = do
+	pool' <- while pool check $ \p -> do
+		altpool <- selectPool True
+		when (altpool == p) $ threadDelay 5000000
+		return altpool
+	genStratumWork pool' work
+	applog logDebug "Generated stratum work"
+	stageWork work
+	where
+	check p = do
+		b0 <- poolHasStratum p
+		if b0 then do
+			b1 <- poolStratumActive p
+			if b1 then do
+				b2 <- poolStratumNotify p
+				if b2 then return False else return True
+			else return True
+		else return False
+
+undef :: a
+undef = undefined
 
 main :: IO ()
 main = do
@@ -34,23 +72,24 @@ main = do
 
 	initialMaxStaged <- getOptQueue
 
-	loop (initialMaxStaged, False) $ \(maxStaged, lagging) -> do
-		cp <- currentPool
-		(b, (ts, maxStaged', lagging')) <-
-			mainInsideBool cp maxStaged lagging
-		when b $ do
-			work <- makeWork
-			incGetfailOccasionsAndTotalGo cp lagging'
-			pool <- selectPool lagging'
-			doWhile pool $ \p -> do
-				hasStratum <- doesPoolHaveStratum p
-				if hasStratum
-					then do	poolHasStratum p work
-						return (p, False)
-					else do b <- doesExistLastWorkCopy p
-						if b	then poolNotHasStratum ts
-								maxStaged' p work
-							else return (p, False)
+	_ <- loop (initialMaxStaged, False) $ \(maxStaged, lagging) -> do
+		(cp, ts, maxStaged', lagging') <- doWhile
+			(undef, undef, maxStaged, lagging) $ \(_, _, ms, l) -> do
+				cp_ <- currentPool
+				(ts_, ms', l') <- mainInsideBool cp_ ms l
+				return ((cp_, ts_, ms', l'), ts_ > ms')
+		work <- makeWork
+		incGetfailOccasionsAndTotalGo cp lagging'
+		pool <- selectPool lagging'
+		_ <- doWhile pool $ \p -> do
+			hasStratum <- doesPoolHaveStratum p
+			if hasStratum
+				then do	funPoolHasStratum' p work
+					return (p, False)
+				else do b <- doesExistLastWorkCopy p
+					if b then poolNotHasStratum ts
+							maxStaged' p work
+						else return (p, False)
 		return (maxStaged', lagging')
 
 	curlGlobalCleanup

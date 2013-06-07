@@ -9027,14 +9027,19 @@ begin_bench:
  *                    main loop                             *
  ************************************************************/
 
-struct work* wrap_make_work() { return make_work(); }
+struct work* wrap_make_work(void) { return make_work(); }
 struct pool* wrap_select_pool(bool lagging) { return select_pool(lagging); }
+bool wrap_clone_available(void) { return clone_available(); }
+void wrap_get_benchmark_work(struct work *work) { get_benchmark_work(work); }
+void wrap_stage_work(struct work *work) { stage_work(work); }
+bool get_opt_benchmark(void) { return opt_benchmark; }
 int get_total_control_threads() { return total_control_threads; }
 int get_opt_queue() { return opt_queue; }
 int does_pool_have_stratum(struct pool *pool) { return pool->has_stratum; }
 int does_exist_last_work_copy(struct pool *pool) { pool->last_work_copy; }
 
-int main_inside_bool(int *ts, struct pool *cp, int *max_staged, bool *lagging)
+void
+main_inside_bool(int *ts, struct pool *cp, int *max_staged, bool *lagging)
 {
 	/* If the primary pool is a getwork pool and cannot roll work,
 	 * try to stage one extra work per mining thread */
@@ -9042,6 +9047,7 @@ int main_inside_bool(int *ts, struct pool *cp, int *max_staged, bool *lagging)
 		!staged_rollable) *max_staged += mining_threads;
 
 	mutex_lock(stgd_lock);
+
 	*ts = __total_staged();
 
 	if (!cp->has_stratum && cp->proto != PLP_GETBLOCKTEMPLATE &&
@@ -9052,9 +9058,8 @@ int main_inside_bool(int *ts, struct pool *cp, int *max_staged, bool *lagging)
 		pthread_cond_wait(&gws_cond, stgd_lock);
 		*ts = __total_staged();
 	}
-	mutex_unlock(stgd_lock);
 
-	return *ts <= *max_staged;
+	mutex_unlock(stgd_lock);
 }
 
 void
@@ -9068,18 +9073,11 @@ inc_getfail_occasions_and_total_go(struct pool *cp, bool lagging)
 	}
 }
 
-void
-pool_has_stratum(struct pool *pool, struct work *work)
-{
-	while (pool -> has_stratum &&
-		(!pool->stratum_active || !pool->stratum_notify)) {
-		struct pool *altpool = select_pool(true);
-		if (altpool == pool && pool->has_stratum) nmsleep(5000);
-		pool = altpool;
-	}
-	gen_stratum_work(pool, work);
-	applog(LOG_DEBUG, "Generated stratum work");
-	stage_work(work);
+bool pool_has_stratum(struct pool *pool) { return pool->has_stratum; }
+bool pool_stratum_active(struct pool *pool) { return pool->stratum_active; }
+bool pool_stratum_notify(struct pool *pool) { return pool->stratum_notify; }
+void wrap_gen_stratum_work(struct pool *pool, struct work *work) {
+	return gen_stratum_work(pool, work);
 }
 
 int
@@ -9113,25 +9111,6 @@ pool_not_has_stratum_body(
 	mutex_unlock(&pool->last_work_lock);
 
 	return should_roll_flag;
-}
-
-int
-not_should_roll_body(struct pool *pool, struct work *work)
-{
-	int not_clone_not_bench_flag = 0;
-
-	if (clone_available()) {
-		applog(LOG_DEBUG, "Cloned getwork work");
-		free_work(work);
-	} else if (opt_benchmark) {
-		get_benchmark_work(work);
-		applog(LOG_DEBUG, "Generated benchmark work");
-		stage_work(work);
-	} else {
-		not_clone_not_bench_flag = 1;
-	}
-
-	return not_clone_not_bench_flag;
 }
 
 int
