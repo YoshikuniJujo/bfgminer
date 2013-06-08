@@ -1,5 +1,6 @@
 module Bfgminerhs.Foreign (
 	PoolProtocol(..),
+	PThreadMutexT,
 
 	applog,
 	logWarning,
@@ -38,13 +39,13 @@ module Bfgminerhs.Foreign (
 	getStagedRollable,
 	getMiningThreads,
 
-	_totalStaged,
+	_getTotalStaged,
 	getOptFailOnly,
 	getGwsCond,
 	pThreadCondWait,
 
 	getStgdLock,
-	currentPool,
+	getCurrentPool,
 	makeWork,
 
 	poolTset,
@@ -146,8 +147,8 @@ foreign import ccall "get_gws_cond" cGetGwsCond :: IO (Ptr PThreadMutexT)
 foreign import ccall "pthread_cond_wait" cPThreadCondWait ::
 	Ptr PThreadMutexT -> Ptr PThreadMutexT -> IO ()
 
-_totalStaged :: IO Int
-_totalStaged = fromIntegral <$> c_TotalStaged
+_getTotalStaged :: IO Int
+_getTotalStaged = fromIntegral <$> c_TotalStaged
 getOptFailOnly :: IO Bool
 getOptFailOnly = cGetOptFailOnly
 getGwsCond :: IO PThreadMutexT
@@ -158,8 +159,8 @@ pThreadCondWait (PThreadMutexT cond) (PThreadMutexT lock) =
 
 getStgdLock :: IO PThreadMutexT
 getStgdLock = PThreadMutexT <$> cGetStgdLock
-currentPool :: IO Pool
-currentPool = Pool <$> cCurrentPool
+getCurrentPool :: IO Pool
+getCurrentPool = Pool <$> cCurrentPool
 
 foreign import ccall "wrap_make_work" cMakeWork :: IO (Ptr Work)
 foreign import ccall "wrap_select_pool" cSelectPool :: Bool -> IO (Ptr Pool)

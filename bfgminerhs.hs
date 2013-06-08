@@ -83,12 +83,12 @@ incGetfailOccasionsAndTotalGo cp True = do
 incGetfailOccasionsAndTotalGo _ False = return ()
 
 enlargeMaxStaged :: Pool -> Int -> IO Int
-enlargeMaxStaged cp maxStaged = do
+enlargeMaxStaged currentPool maxStaged = do
 	-- If the primary pool is a getwork pool and cannot roll work,
 	-- try to stage one extra work per mining thread
-	phs <- poolHasStratum cp
+	phs <- poolHasStratum currentPool
 	if phs then return maxStaged else do
-		pp <- poolProto cp
+		pp <- poolProto currentPool
 		case pp of
 			PlpGetblocktemplate -> return maxStaged
 			_ -> do	sr <- getStagedRollable
@@ -96,11 +96,11 @@ enlargeMaxStaged cp maxStaged = do
 				else (maxStaged +) <$> getMiningThreads
 
 setLaggingEtc :: Pool -> Int -> Bool -> IO (Int, Bool)
-setLaggingEtc cp maxStaged lagging = do
-	ts <- _totalStaged
-	phs <- poolHasStratum cp
+setLaggingEtc currentPool maxStaged lagging = do
+	ts <- _getTotalStaged
+	phs <- poolHasStratum currentPool
 	lagging' <- if phs then return lagging else do
-		pp <- poolProto cp
+		pp <- poolProto currentPool
 		case pp of
 			PlpGetblocktemplate -> return lagging
 			_ -> if ts /= 0 then return lagging else do
@@ -111,10 +111,17 @@ setLaggingEtc cp maxStaged lagging = do
 			gc <- getGwsCond
 			sl <- getStgdLock
 			pThreadCondWait gc sl
-			_totalStaged
+			_getTotalStaged
 		else return ts
 	return (ts', lagging')
 		
+withMutexLock :: IO PThreadMutexT -> IO a -> IO a
+withMutexLock getLock action = do
+	lock <- getLock
+	mutexLock lock
+	r <- action
+	mutexUnlock lock
+	return r
 
 main :: IO ()
 main = do
@@ -129,17 +136,16 @@ main = do
 	initialMaxStaged <- getOptQueue
 
 	_ <- loop (initialMaxStaged, False) $ \(maxStaged, lagging) -> do
-		(cp, ts, maxStaged', lagging') <- doWhile
+		(currentPool, totalStaged, maxStaged', lagging') <- doWhile
 			(undef, undef, maxStaged, lagging) $ \(_, _, ms, l) -> do
-				cp_ <- currentPool
-				stgdLock <- getStgdLock
-				mutexLock stgdLock
-				ms' <- enlargeMaxStaged cp_ ms
-				(ts_, l') <- setLaggingEtc cp_ ms' l
-				mutexUnlock stgdLock
-				return ((cp_, ts_, ms', l'), ts_ > ms')
+				cp <- getCurrentPool
+				(ts, ms', l') <- withMutexLock getStgdLock $ do
+					ms_ <- enlargeMaxStaged cp ms
+					(ts_, l_) <- setLaggingEtc cp ms_ l
+					return (ts_, ms_, l_)
+				return ((cp, ts, ms', l'), ts > ms')
 		work <- makeWork
-		incGetfailOccasionsAndTotalGo cp lagging'
+		incGetfailOccasionsAndTotalGo currentPool lagging'
 		pool <- selectPool lagging'
 		_ <- doWhile pool $ \p -> do
 			hasStratum <- poolHasStratum p
@@ -148,7 +154,7 @@ main = do
 					return (p, False)
 				else do b <- poolLastWorkCopy p
 					case b of
-						Just _ -> poolNotHasStratum ts
+						Just _ -> poolNotHasStratum totalStaged
 							maxStaged' p work
 						_ -> return (p, False)
 		return (maxStaged', lagging')
