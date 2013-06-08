@@ -18,6 +18,7 @@ module Bfgminerhs.Foreign (
 	poolLastWorkLock,
 	poolLastWorkCopy,
 
+	withMutexLock,
 	mutexLock,
 	mutexUnlock,
 
@@ -218,6 +219,14 @@ mainNoRoll (Pool pp) (Work pw) = cMainNoRoll pp pw
 mutexLock, mutexUnlock :: PThreadMutexT -> IO ()
 mutexLock = cMutexLock . getPtrPThreadMutexT
 mutexUnlock = cMutexUnlock . getPtrPThreadMutexT
+		
+withMutexLock :: IO PThreadMutexT -> IO a -> IO a
+withMutexLock getLock action = do
+	lock <- getLock
+	mutexLock lock
+	r <- action
+	mutexUnlock lock
+	return r
 
 genStratumWork :: Pool -> Work -> IO ()
 genStratumWork (Pool pp) (Work pw) = cGenStratumWork pp pw

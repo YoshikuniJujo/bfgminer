@@ -114,14 +114,6 @@ setLaggingEtc currentPool maxStaged lagging = do
 			_getTotalStaged
 		else return ts
 	return (ts', lagging')
-		
-withMutexLock :: IO PThreadMutexT -> IO a -> IO a
-withMutexLock getLock action = do
-	lock <- getLock
-	mutexLock lock
-	r <- action
-	mutexUnlock lock
-	return r
 
 main :: IO ()
 main = do
