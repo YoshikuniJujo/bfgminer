@@ -82,18 +82,18 @@ incGetfailOccasionsAndTotalGo cp True = do
 		incTotalGo
 incGetfailOccasionsAndTotalGo _ False = return ()
 
-enlargeMaxStaged :: Pool -> Int -> IO Int
-enlargeMaxStaged currentPool maxStaged = do
+getworkCantRoll :: Pool -> IO Bool
+getworkCantRoll currentPool = do
 	-- If the primary pool is a getwork pool and cannot roll work,
 	-- try to stage one extra work per mining thread
-	phs <- poolHasStratum currentPool
-	if phs then return maxStaged else do
-		pp <- poolProto currentPool
-		case pp of
-			PlpGetblocktemplate -> return maxStaged
-			_ -> do	sr <- getStagedRollable
-				if sr /= 0 then return maxStaged
-				else (maxStaged +) <$> getMiningThreads
+	cphs <- poolHasStratum currentPool
+	cpp <- poolProto currentPool
+	sr <- getStagedRollable
+	return $ case (cphs, cpp, sr) of
+		(True, _, _) -> False
+		(_, PlpGetblocktemplate, _) -> False
+		(_, _, 0) -> True
+		_ -> False
 
 setLaggingEtc :: Pool -> Int -> Bool -> IO (Int, Bool)
 setLaggingEtc currentPool maxStaged lagging = do
@@ -140,7 +140,9 @@ main = do
 			(undef, undef, maxStaged, lagging) $ \(_, _, ms, l) -> do
 				cp <- getCurrentPool
 				(ts, ms', l') <- withMutexLock getStgdLock $ do
-					ms_ <- enlargeMaxStaged cp ms
+					ms_ <- ifM (getworkCantRoll cp)
+						((ms +) <$> getMiningThreads)
+						(return ms)
 					(ts_, l_) <- setLaggingEtc cp ms_ l
 					return (ts_, ms_, l_)
 				return ((cp, ts, ms', l'), ts > ms')

@@ -1,23 +1,29 @@
 module Bfgminerhs.Tools (
 	loop,
 	doWhile,
-	while
+	while,
+	ifM
 ) where
 
-loop :: a -> (a -> IO a) -> IO a
+loop :: Monad m => a -> (a -> m a) -> m a
 loop x act = do
 	r <- act x
 	loop r act
 
-doWhile :: a -> (a -> IO (a, Bool)) -> IO a
+doWhile :: Monad m => a -> (a -> m (a, Bool)) -> m a
 doWhile x0 action = do
 	(x1, b) <- action x0
 	if b then doWhile x1 action else return x1
 
-while :: a -> (a -> IO Bool) -> (a -> IO a) -> IO a
+while :: Monad m => a -> (a -> m Bool) -> (a -> m a) -> m a
 while x0 p action = do
 	b <- p x0
 	if b then do
 		x1 <- action x0
 		while x1 p action
 	else return x0
+
+ifM :: Monad m => m Bool -> m a -> m a -> m a
+ifM p t e = do
+	b <- p
+	if b then t else e
