@@ -45,10 +45,23 @@ poolNotHasStratumBody pool work (Just lastWork) = do
 	cr <- canRoll lastWork
 	if cr then do
 		sr <- shouldRoll lastWork
-		if sr then mainDoRoll pool work >> return True
+		if sr then mainDoRoll' pool work >> return True
 		else mainNoRoll pool lastWork >> return False
 	else mainNoRoll pool lastWork >> return False
 poolNotHasStratumBody _ _ Nothing = return False
+
+mainDoRoll' :: Pool -> Work -> IO ()
+mainDoRoll' pool work = do
+	freeWork work
+	work' <- makeClone =<< poolLastWorkCopy pool
+	mutexUnlock =<< poolLastWorkLock pool
+	_ <- rollWork work'
+	wt <- workTmpl work'
+	t <- time
+	tl <- blkmkTimeLeft wt t
+	applog logDebug $ "Generated work from latest GBT job in " ++
+		"get_work_thread with " ++ show tl ++ " seconds left"
+	stageWork work'
 
 funPoolHasStratum :: Pool -> Work -> IO ()
 funPoolHasStratum pool work = do

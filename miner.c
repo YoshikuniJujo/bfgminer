@@ -9066,18 +9066,9 @@ void inc_total_go(void) { total_go++; }
 
 enum pool_protocol plp_getblocktemplate(void) { return PLP_GETBLOCKTEMPLATE; }
 
-void
-main_do_roll(struct pool *pool, struct work *work)
-{
-	free_work(work);
-	work = make_clone(pool->last_work_copy);
-	mutex_unlock(&pool->last_work_lock);
-	roll_work(work);
-	applog(LOG_DEBUG, "Generated work from latest GBT job in "
-		"get_work_thread with %d seconds left",
-		(int)blkmk_time_left(work->tmpl, time(NULL)));
-	stage_work(work);
-}
+struct work* wrap_make_clone(struct work *work) { return make_clone(work); }
+void wrap_roll_work(struct work *work) { roll_work(work); }
+blktemplate_t* work_tmpl(struct work *work) { return work->tmpl; }
 
 void
 main_not_roll(struct pool *pool, struct work *last_work)

@@ -24,7 +24,13 @@ module Bfgminerhs.Foreign (
 
 	canRoll,
 	shouldRoll,
-	mainDoRoll,
+
+	makeClone,
+	rollWork,
+	workTmpl,
+	blkmkTimeLeft,
+	time,
+
 	mainNoRoll,
 
 	notCloneNotBenchBody,
@@ -80,6 +86,7 @@ data CurlEnt = CurlEnt (Ptr CurlEnt)
 data PThreadMutexT = PThreadMutexT { getPtrPThreadMutexT :: Ptr PThreadMutexT }
 data PBool = PBool (Ptr Bool)
 data PoolProtocol = PlpNone | PlpGetwork | PlpGetblocktemplate deriving Enum
+data BlktemplateT = BlktemplateT { getBlktemplateT :: Ptr BlktemplateT }
 
 fromCArrayFun :: (CInt -> Ptr CString -> IO a) -> [String] -> IO a
 fromCArrayFun f args = do
@@ -209,11 +216,29 @@ canRoll, shouldRoll :: Work -> IO Bool
 canRoll = cCanRoll . getPtrWork
 shouldRoll = cShouldRoll . getPtrWork
 
-foreign import ccall "main_do_roll" cMainDoRoll :: Ptr Pool -> Ptr Work -> IO ()
+foreign import ccall "wrap_make_clone" cMakeClone :: Ptr Work -> IO (Ptr Work)
+foreign import ccall "wrap_roll_work" cRollWork :: Ptr Work -> IO (Ptr Work)
+foreign import ccall "work_tmpl" cWorkTmpl :: Ptr Work -> IO (Ptr BlktemplateT)
+foreign import ccall "blkmk_time_left" cBlkmkTimeLeft ::
+	Ptr BlktemplateT -> CLong -> IO CInt
+foreign import ccall "time" cTime :: Ptr CLong -> IO CLong
+
+makeClone :: Maybe Work -> IO Work
+makeClone (Just (Work pw)) = Work <$> cMakeClone pw
+makeClone Nothing = Work <$> cMakeClone nullPtr
+rollWork :: Work -> IO Work
+rollWork = fmap Work . cRollWork . getPtrWork
+workTmpl :: Work -> IO BlktemplateT
+workTmpl = fmap BlktemplateT . cWorkTmpl . getPtrWork
+blkmkTimeLeft :: BlktemplateT -> Int -> IO Int
+blkmkTimeLeft (BlktemplateT pblkt) =
+	fmap fromIntegral . cBlkmkTimeLeft pblkt . fromIntegral
+time :: IO Int
+time = fromIntegral <$> cTime nullPtr
+
 foreign import ccall "main_not_roll" cMainNoRoll :: Ptr Pool -> Ptr Work -> IO ()
 
-mainDoRoll, mainNoRoll :: Pool -> Work -> IO ()
-mainDoRoll (Pool pp) (Work pw) = cMainDoRoll pp pw
+mainNoRoll :: Pool -> Work -> IO ()
 mainNoRoll (Pool pp) (Work pw) = cMainNoRoll pp pw
 
 mutexLock, mutexUnlock :: PThreadMutexT -> IO ()
