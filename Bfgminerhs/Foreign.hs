@@ -17,6 +17,7 @@ module Bfgminerhs.Foreign (
 	poolStratumNotify,
 	poolLastWorkLock,
 	poolLastWorkCopy,
+	poolClearLastWorkCopy,
 
 	withMutexLock,
 	mutexLock,
@@ -31,7 +32,7 @@ module Bfgminerhs.Foreign (
 	blkmkTimeLeft,
 	time,
 
-	mainNoRoll,
+	blkmkWorkLeft,
 
 	notCloneNotBenchBody,
 	cloneAvailable,
@@ -86,7 +87,7 @@ data CurlEnt = CurlEnt (Ptr CurlEnt)
 data PThreadMutexT = PThreadMutexT { getPtrPThreadMutexT :: Ptr PThreadMutexT }
 data PBool = PBool (Ptr Bool)
 data PoolProtocol = PlpNone | PlpGetwork | PlpGetblocktemplate deriving Enum
-data BlktemplateT = BlktemplateT { getBlktemplateT :: Ptr BlktemplateT }
+data BlktemplateT = BlktemplateT { getPtrBlktemplateT :: Ptr BlktemplateT }
 
 fromCArrayFun :: (CInt -> Ptr CString -> IO a) -> [String] -> IO a
 fromCArrayFun f args = do
@@ -205,6 +206,11 @@ foreign import ccall "pool_last_work_lock" cPoolLastWorkLock ::
 	Ptr Pool -> IO (Ptr PThreadMutexT)
 foreign import ccall "pool_last_work_copy" cPoolLastWorkCopy ::
 	Ptr Pool -> IO (Ptr Work)
+foreign import ccall "pool_set_last_work_copy" cPoolSetLastWorkCopy ::
+	Ptr Pool -> Ptr Work -> IO ()
+
+poolClearLastWorkCopy :: Pool -> IO ()
+poolClearLastWorkCopy (Pool pp) = cPoolSetLastWorkCopy pp nullPtr
 
 foreign import ccall "wrap_mutex_lock" cMutexLock :: Ptr PThreadMutexT -> IO ()
 foreign import ccall "wrap_mutex_unlock" cMutexUnlock :: Ptr PThreadMutexT -> IO ()
@@ -228,18 +234,26 @@ makeClone (Just (Work pw)) = Work <$> cMakeClone pw
 makeClone Nothing = Work <$> cMakeClone nullPtr
 rollWork :: Work -> IO Work
 rollWork = fmap Work . cRollWork . getPtrWork
-workTmpl :: Work -> IO BlktemplateT
-workTmpl = fmap BlktemplateT . cWorkTmpl . getPtrWork
-blkmkTimeLeft :: BlktemplateT -> Int -> IO Int
-blkmkTimeLeft (BlktemplateT pblkt) =
+workTmpl :: Work -> IO (Maybe BlktemplateT)
+workTmpl (Work pw) = do
+	ptmpl <- cWorkTmpl pw
+	if ptmpl == nullPtr then return Nothing else
+		return $ Just $ BlktemplateT ptmpl
+blkmkTimeLeft :: Maybe BlktemplateT -> Int -> IO Int
+blkmkTimeLeft (Just (BlktemplateT pblkt)) =
 	fmap fromIntegral . cBlkmkTimeLeft pblkt . fromIntegral
+blkmkTimeLeft _ =
+	fmap fromIntegral . cBlkmkTimeLeft nullPtr . fromIntegral
 time :: IO Int
 time = fromIntegral <$> cTime nullPtr
 
-foreign import ccall "main_not_roll" cMainNoRoll :: Ptr Pool -> Ptr Work -> IO ()
+foreign import ccall "blkmk_work_left" cBlkmkWorkLeft ::
+	Ptr BlktemplateT -> IO CLong
 
-mainNoRoll :: Pool -> Work -> IO ()
-mainNoRoll (Pool pp) (Work pw) = cMainNoRoll pp pw
+blkmkWorkLeft :: Maybe BlktemplateT -> IO Int
+blkmkWorkLeft (Just (BlktemplateT ptmpl)) = fmap fromIntegral $ cBlkmkWorkLeft ptmpl
+blkmkWorkLeft _ = fmap fromIntegral $ cBlkmkWorkLeft nullPtr
+
 
 mutexLock, mutexUnlock :: PThreadMutexT -> IO ()
 mutexLock = cMutexLock . getPtrPThreadMutexT

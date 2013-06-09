@@ -8860,7 +8860,8 @@ int main_initialize(int argc, char *argv[])
 #ifdef HAVE_CURSES
 			if (use_curses) {
 				halfdelay(150);
-				applog(LOG_ERR, "Press any key to exit, or BFGMiner will try again in 15s.");
+				applog(LOG_ERR, "Press any key to exit, "
+				"or BFGMiner will try again in 15s.");
 				if (getch() != ERR)
 					quit(0, "No servers could be used! Exiting.");
 				cbreak();
@@ -9037,6 +9038,8 @@ bool pool_stratum_notify(struct pool *pool) { return pool->stratum_notify; }
 pthread_mutex_t* pool_last_work_lock(struct pool *pool) {
 	return &pool->last_work_lock; }
 struct work* pool_last_work_copy(struct pool *pool) { pool->last_work_copy; }
+void pool_set_last_work_copy(struct pool *pool, struct work* work) {
+	pool->last_work_copy = work; }
 
 struct work* wrap_make_work(void) { return make_work(); }
 struct pool* wrap_select_pool(bool lagging) { return select_pool(lagging); }
@@ -9069,20 +9072,6 @@ enum pool_protocol plp_getblocktemplate(void) { return PLP_GETBLOCKTEMPLATE; }
 struct work* wrap_make_clone(struct work *work) { return make_clone(work); }
 void wrap_roll_work(struct work *work) { roll_work(work); }
 blktemplate_t* work_tmpl(struct work *work) { return work->tmpl; }
-
-void
-main_not_roll(struct pool *pool, struct work *last_work)
-{
-	if (last_work->tmpl && pool->proto == PLP_GETBLOCKTEMPLATE
-		&& blkmk_work_left(last_work->tmpl) >
-			(unsigned long)mining_threads) {
-		// Don't free last_work_copy, since it is used to detect
-		// upstream provides plenty of work per template
-	} else {
-		free_work(last_work);
-		pool->last_work_copy = NULL;
-	}
-}
 
 int
 not_clone_not_bench_body(
