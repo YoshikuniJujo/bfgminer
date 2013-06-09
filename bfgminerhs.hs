@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, TupleSections #-}
 
 module Main where
 
@@ -27,10 +27,12 @@ notShouldRollBody ts maxStaged pool work = do
 		else do
 			workSetPool work pool
 			ce <- popCurlEntry3 pool 2
-			b' <- notCloneNotBenchBody ts maxStaged pool work ce
-			p' <- if b' then notGetUpstreamWork pool ce else
-				return pool
-			return (p', b')
+			curl <- curlEntCurl ce
+			-- obtain new work from bitcoin via JSON-RPC
+			ifM (getUpstreamWork work curl)
+				(getUpstreamWorkDone ts maxStaged pool work ce >>
+					return (pool, False))
+				((, True) <$> notGetUpstreamWork pool ce)
 
 poolNotHasStratum :: Int -> Int -> Pool -> Work -> IO (Pool, Bool)
 poolNotHasStratum ts maxStaged pool work = do

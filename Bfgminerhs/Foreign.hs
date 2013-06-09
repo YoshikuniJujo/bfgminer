@@ -36,7 +36,10 @@ module Bfgminerhs.Foreign (
 
 	workSetPool,
 	popCurlEntry3,
-	notCloneNotBenchBody,
+	curlEntCurl,
+	getUpstreamWork,
+	getUpstreamWorkDone,
+
 	cloneAvailable,
 	freeWork,
 	stageWork,
@@ -84,12 +87,13 @@ import Foreign.Storable
 	
 data Pool = Pool { getPtrPool :: Ptr Pool } deriving Eq
 data Work = Work { getPtrWork :: Ptr Work }
-data CurlEnt = CurlEnt (Ptr CurlEnt)
+data CurlEnt = CurlEnt { getPtrCurlEnt :: Ptr CurlEnt }
 -- data CurlEnt = CurlEnt { getPtrCurlEnt :: Ptr CurlEnt }
 data PThreadMutexT = PThreadMutexT { getPtrPThreadMutexT :: Ptr PThreadMutexT }
 data PBool = PBool (Ptr Bool)
 data PoolProtocol = PlpNone | PlpGetwork | PlpGetblocktemplate deriving Enum
 data BlktemplateT = BlktemplateT { getPtrBlktemplateT :: Ptr BlktemplateT }
+data Curl = Curl (Ptr Curl)
 
 fromCArrayFun :: (CInt -> Ptr CString -> IO a) -> [String] -> IO a
 fromCArrayFun f args = do
@@ -283,12 +287,21 @@ poolLastWorkCopy (Pool pp) = do
 	pw <- cPoolLastWorkCopy pp
 	return $ if pw == nullPtr then Nothing else Just $ Work pw
 
-foreign import ccall "not_clone_not_bench_body" cNotCloneNotBenchBody ::
-	CInt -> CInt -> Ptr Pool -> Ptr Work -> Ptr CurlEnt -> IO Bool
-notCloneNotBenchBody :: Int -> Int -> Pool -> Work -> CurlEnt -> IO Bool
-notCloneNotBenchBody ts maxStaged (Pool p) (Work w) (CurlEnt ce) = do
-	b <- cNotCloneNotBenchBody (fromIntegral ts) (fromIntegral maxStaged)p w ce
+foreign import ccall "get_upstream_work_done" cGetUpstreamWorkDone ::
+	CInt -> CInt -> Ptr Pool -> Ptr Work -> Ptr CurlEnt -> IO ()
+getUpstreamWorkDone :: Int -> Int -> Pool -> Work -> CurlEnt -> IO ()
+getUpstreamWorkDone ts maxStaged (Pool p) (Work w) (CurlEnt ce) = do
+	b <- cGetUpstreamWorkDone (fromIntegral ts) (fromIntegral maxStaged)p w ce
 	return b
+
+foreign import ccall "wrap_get_upstream_work" cGetUpstreamWork ::
+	Ptr Work -> Ptr Curl -> IO Bool
+getUpstreamWork :: Work -> Curl -> IO Bool
+getUpstreamWork (Work pw) (Curl pc) = cGetUpstreamWork pw pc
+
+foreign import ccall "curl_ent_curl" cCurlEntCurl :: Ptr CurlEnt -> IO (Ptr Curl)
+curlEntCurl :: CurlEnt -> IO Curl
+curlEntCurl = fmap Curl . cCurlEntCurl . getPtrCurlEnt
 
 foreign import ccall "work_set_pool" cWorkSetPool :: Ptr Work -> Ptr Pool -> IO ()
 workSetPool :: Work -> Pool -> IO ()

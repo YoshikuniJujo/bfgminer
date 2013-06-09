@@ -9056,6 +9056,8 @@ bool wrap_pool_tset(struct pool *pool, bool *var) { return pool_tset(pool, var);
 int wrap___total_staged(void) { return __total_staged(); }
 struct curl_ent* wrap_pop_curl_entry3(struct pool *pool, int blocking) {
 	pop_curl_entry3(pool, blocking); }
+bool wrap_get_upstream_work(struct work *work, CURL *curl) {
+	return get_upstream_work(work, curl); }
 
 bool get_opt_benchmark(void) { return opt_benchmark; }
 int get_opt_queue(void) { return opt_queue; }
@@ -9076,25 +9078,21 @@ void wrap_roll_work(struct work *work) { roll_work(work); }
 blktemplate_t* work_tmpl(struct work *work) { return work->tmpl; }
 
 void work_set_pool(struct work *work, struct pool *pool) { work->pool = pool; }
+CURL* curl_ent_curl(struct curl_ent *ce) { return ce->curl; }
 
 int
-not_clone_not_bench_body(
+get_upstream_work_done(
 	int ts, int max_staged, struct pool *pool, struct work *work,
 	struct curl_ent *ce)
 {
 	int retry_flag;
 
-	/* obtain new work from bitcoin via JSON-RPC */
-	if (!get_upstream_work(work, ce->curl)) {
-		retry_flag = 1;
-	} else {
-		if (ts >= max_staged) pool_tclear(pool, &pool->lagging);
-		if (pool_tclear(pool, &pool->idle)) pool_resus(pool);
+	if (ts >= max_staged) pool_tclear(pool, &pool->lagging);
+	if (pool_tclear(pool, &pool->idle)) pool_resus(pool);
 
-		applog(LOG_DEBUG, "Generated getwork work");
-		stage_work(work);
-		push_curl_entry(ce, pool);
-	}
+	applog(LOG_DEBUG, "Generated getwork work");
+	stage_work(work);
+	push_curl_entry(ce, pool);
 
 	return retry_flag;
 }
