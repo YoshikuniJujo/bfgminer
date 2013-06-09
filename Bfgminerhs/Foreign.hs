@@ -34,6 +34,8 @@ module Bfgminerhs.Foreign (
 
 	blkmkWorkLeft,
 
+	workSetPool,
+	popCurlEntry3,
 	notCloneNotBenchBody,
 	cloneAvailable,
 	freeWork,
@@ -282,7 +284,21 @@ poolLastWorkCopy (Pool pp) = do
 	return $ if pw == nullPtr then Nothing else Just $ Work pw
 
 foreign import ccall "not_clone_not_bench_body" cNotCloneNotBenchBody ::
-	CInt -> CInt -> Ptr Pool -> Ptr Work -> Ptr (Ptr CurlEnt) -> IO Bool
+	CInt -> CInt -> Ptr Pool -> Ptr Work -> Ptr CurlEnt -> IO Bool
+notCloneNotBenchBody :: Int -> Int -> Pool -> Work -> CurlEnt -> IO Bool
+notCloneNotBenchBody ts maxStaged (Pool p) (Work w) (CurlEnt ce) = do
+	b <- cNotCloneNotBenchBody (fromIntegral ts) (fromIntegral maxStaged)p w ce
+	return b
+
+foreign import ccall "work_set_pool" cWorkSetPool :: Ptr Work -> Ptr Pool -> IO ()
+workSetPool :: Work -> Pool -> IO ()
+workSetPool (Work pw) (Pool pp) = cWorkSetPool pw pp
+
+foreign import ccall "wrap_pop_curl_entry3" cPopCurlEntry3 ::
+	Ptr Pool -> CInt -> IO (Ptr CurlEnt)
+popCurlEntry3 :: Pool -> Int -> IO CurlEnt
+popCurlEntry3 (Pool pp) n = CurlEnt <$> cPopCurlEntry3 pp (fromIntegral n)
+
 foreign import ccall "wrap_clone_available" cCloneAvailable :: IO Bool
 foreign import ccall "free_work" cFreeWork :: Ptr Work -> IO ()
 foreign import ccall "wrap_get_benchmark_work" cGetBenchmarkWork :: Ptr Work -> IO ()
@@ -290,12 +306,6 @@ foreign import ccall "wrap_stage_work" cStageWork :: Ptr Work -> IO ()
 foreign import ccall "get_opt_benchmark" cGetOptBenchmark :: IO Bool
 foreign import ccall "not_get_upstream_work" cNotGetUpstreamWork ::
 	Ptr (Ptr Pool) -> Ptr CurlEnt -> IO ()
-
-notCloneNotBenchBody :: Int -> Int -> Pool -> Work -> IO (CurlEnt, Bool)
-notCloneNotBenchBody ts maxStaged (Pool p) (Work w) = alloca $ \pce -> do
-	b <- cNotCloneNotBenchBody (fromIntegral ts) (fromIntegral maxStaged) p w pce
-	ce <- peek pce
-	return (CurlEnt ce, b)
 cloneAvailable, getOptBenchmark :: IO Bool
 cloneAvailable = cCloneAvailable
 freeWork, getBenchmarkWork, stageWork :: Work -> IO ()

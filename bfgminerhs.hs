@@ -25,7 +25,9 @@ notShouldRollBody ts maxStaged pool work = do
 			stageWork work
 			return (pool, False)
 		else do
-			(ce, b') <- notCloneNotBenchBody ts maxStaged pool work
+			workSetPool work pool
+			ce <- popCurlEntry3 pool 2
+			b' <- notCloneNotBenchBody ts maxStaged pool work ce
 			p' <- if b' then notGetUpstreamWork pool ce else
 				return pool
 			return (p', b')

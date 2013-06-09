@@ -9054,6 +9054,8 @@ bool wrap_can_roll(struct work *work) { return can_roll(work); }
 bool wrap_should_roll(struct work *work) { return should_roll(work); }
 bool wrap_pool_tset(struct pool *pool, bool *var) { return pool_tset(pool, var); }
 int wrap___total_staged(void) { return __total_staged(); }
+struct curl_ent* wrap_pop_curl_entry3(struct pool *pool, int blocking) {
+	pop_curl_entry3(pool, blocking); }
 
 bool get_opt_benchmark(void) { return opt_benchmark; }
 int get_opt_queue(void) { return opt_queue; }
@@ -9073,18 +9075,17 @@ struct work* wrap_make_clone(struct work *work) { return make_clone(work); }
 void wrap_roll_work(struct work *work) { roll_work(work); }
 blktemplate_t* work_tmpl(struct work *work) { return work->tmpl; }
 
+void work_set_pool(struct work *work, struct pool *pool) { work->pool = pool; }
+
 int
 not_clone_not_bench_body(
 	int ts, int max_staged, struct pool *pool, struct work *work,
-	struct curl_ent **ce)
+	struct curl_ent *ce)
 {
 	int retry_flag;
 
-	work->pool = pool;
-	*ce = pop_curl_entry3(pool, 2);
-
 	/* obtain new work from bitcoin via JSON-RPC */
-	if (!get_upstream_work(work, (*ce)->curl)) {
+	if (!get_upstream_work(work, ce->curl)) {
 		retry_flag = 1;
 	} else {
 		if (ts >= max_staged) pool_tclear(pool, &pool->lagging);
@@ -9092,7 +9093,7 @@ not_clone_not_bench_body(
 
 		applog(LOG_DEBUG, "Generated getwork work");
 		stage_work(work);
-		push_curl_entry(*ce, pool);
+		push_curl_entry(ce, pool);
 	}
 
 	return retry_flag;
