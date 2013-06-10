@@ -8411,50 +8411,6 @@ static void raise_fd_limits(void)
 int curl_global_all() { return CURL_GLOBAL_ALL; }
 
 void
-try_pools_active(void) {
-	do {
-		int slept = 0;
-
-		/* Look for at least one active pool before starting */
-		probe_pools();
-		do {
-			sleep(1);
-			slept++;
-		} while (!pools_active && slept < 60);
-
-		if (!pools_active) {
-			applog(LOG_ERR, "No servers were found that could be "
-				"used to get work from.");
-			applog(LOG_ERR, "Please check the details from the "
-				"list below of the servers you have input");
-			applog(LOG_ERR, "Most likely you have input the wrong "
-				"URL, forgotten to add a port, or have not set "
-				"up workers");
-			for (int i = 0; i < total_pools; i++) {
-				struct pool *pool;
-
-				pool = pools[i];
-				applog(LOG_WARNING, "Pool: %d  URL: %s  "
-						"User: %s  Password: %s",
-					i, pool->rpc_url, pool->rpc_user,
-					pool->rpc_pass);
-			}
-#ifdef HAVE_CURSES
-			if (use_curses) {
-				halfdelay(150);
-				applog(LOG_ERR, "Press any key to exit, "
-				"or BFGMiner will try again in 15s.");
-				if (getch() != ERR)
-					quit(0, "No servers could be used! Exiting.");
-				cbreak();
-			} else
-#endif
-				quit(0, "No servers could be used! Exiting.");
-		}
-	} while (!pools_active);
-}
-
-void
 before_try_pools_active(int argc, char *argv[], struct thr_info **thr)
 {
 	struct sigaction handler;
@@ -8870,7 +8826,6 @@ before_try_pools_active(int argc, char *argv[], struct thr_info **thr)
 	stgd_lock = &getq->mutex;
 
 	if (opt_benchmark) {
-//		goto begin_bench;
 	} else {
 		for (i = 0; i < total_pools; i++) {
 			struct pool *pool  = pools[i];
@@ -8881,7 +8836,49 @@ before_try_pools_active(int argc, char *argv[], struct thr_info **thr)
 	}
 }
 
-void after_try_pools_active(struct thr_info *thr);
+void
+try_pools_active(void) {
+	do {
+		int slept = 0;
+
+		/* Look for at least one active pool before starting */
+		probe_pools();
+		do {
+			sleep(1);
+			slept++;
+		} while (!pools_active && slept < 60);
+
+		if (!pools_active) {
+			applog(LOG_ERR, "No servers were found that could be "
+				"used to get work from.");
+			applog(LOG_ERR, "Please check the details from the "
+				"list below of the servers you have input");
+			applog(LOG_ERR, "Most likely you have input the wrong "
+				"URL, forgotten to add a port, or have not set "
+				"up workers");
+			for (int i = 0; i < total_pools; i++) {
+				struct pool *pool;
+
+				pool = pools[i];
+				applog(LOG_WARNING, "Pool: %d  URL: %s  "
+						"User: %s  Password: %s",
+					i, pool->rpc_url, pool->rpc_user,
+					pool->rpc_pass);
+			}
+#ifdef HAVE_CURSES
+			if (use_curses) {
+				halfdelay(150);
+				applog(LOG_ERR, "Press any key to exit, "
+				"or BFGMiner will try again in 15s.");
+				if (getch() != ERR)
+					quit(0, "No servers could be used! Exiting.");
+				cbreak();
+			} else
+#endif
+				quit(0, "No servers could be used! Exiting.");
+		}
+	} while (!pools_active);
+}
 
 void
 main_if_use_scrypt(void) {
