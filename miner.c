@@ -8847,15 +8847,21 @@ int main_initialize(int argc, char *argv[])
 		} while (!pools_active && slept < 60);
 
 		if (!pools_active) {
-			applog(LOG_ERR, "No servers were found that could be used to get work from.");
-			applog(LOG_ERR, "Please check the details from the list below of the servers you have input");
-			applog(LOG_ERR, "Most likely you have input the wrong URL, forgotten to add a port, or have not set up workers");
+			applog(LOG_ERR, "No servers were found that could be "
+				"used to get work from.");
+			applog(LOG_ERR, "Please check the details from the "
+				"list below of the servers you have input");
+			applog(LOG_ERR, "Most likely you have input the wrong "
+				"URL, forgotten to add a port, or have not set "
+				"up workers");
 			for (i = 0; i < total_pools; i++) {
 				struct pool *pool;
 
 				pool = pools[i];
-				applog(LOG_WARNING, "Pool: %d  URL: %s  User: %s  Password: %s",
-				       i, pool->rpc_url, pool->rpc_user, pool->rpc_pass);
+				applog(LOG_WARNING, "Pool: %d  URL: %s  "
+						"User: %s  Password: %s",
+					i, pool->rpc_url, pool->rpc_user,
+					pool->rpc_pass);
 			}
 #ifdef HAVE_CURSES
 			if (use_curses) {
