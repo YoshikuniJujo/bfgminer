@@ -9080,22 +9080,21 @@ blktemplate_t* work_tmpl(struct work *work) { return work->tmpl; }
 void work_set_pool(struct work *work, struct pool *pool) { work->pool = pool; }
 CURL* curl_ent_curl(struct curl_ent *ce) { return ce->curl; }
 
-int
+void wrap_pool_resus(struct pool *pool) { pool_resus(pool); }
+bool* pool_idle(struct pool *pool) { return &pool->idle; }
+void wrap_push_curl_entry(struct curl_ent *ce, struct pool *pool) {
+	push_curl_entry(ce, pool); }
+
+/*
+void
 get_upstream_work_done(
-	int ts, int max_staged, struct pool *pool, struct work *work,
-	struct curl_ent *ce)
+	struct pool *pool, struct work *work, struct curl_ent *ce)
 {
-	int retry_flag;
-
-	if (ts >= max_staged) pool_tclear(pool, &pool->lagging);
-	if (pool_tclear(pool, &pool->idle)) pool_resus(pool);
-
 	applog(LOG_DEBUG, "Generated getwork work");
 	stage_work(work);
 	push_curl_entry(ce, pool);
-
-	return retry_flag;
 }
+*/
 
 void
 not_get_upstream_work(struct pool **pool, struct curl_ent *ce)

@@ -2,8 +2,11 @@ module Bfgminerhs.Tools (
 	loop,
 	doWhile,
 	while,
-	ifM
+	ifM,
+	whenM
 ) where
+
+import Control.Monad(when)
 
 loop :: Monad m => a -> (a -> m a) -> m a
 loop x act = do
@@ -27,3 +30,8 @@ ifM :: Monad m => m Bool -> m a -> m a -> m a
 ifM p t e = do
 	b <- p
 	if b then t else e
+
+whenM :: Monad m => m Bool -> m a -> m ()
+whenM p t = do
+	b <- p
+	when b $ t >> return ()

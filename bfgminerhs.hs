@@ -29,10 +29,18 @@ notShouldRollBody ts maxStaged pool work = do
 			ce <- popCurlEntry3 pool 2
 			curl <- curlEntCurl ce
 			-- obtain new work from bitcoin via JSON-RPC
-			ifM (getUpstreamWork work curl)
-				(getUpstreamWorkDone ts maxStaged pool work ce >>
-					return (pool, False))
-				((, True) <$> notGetUpstreamWork pool ce)
+			ifM (getUpstreamWork work curl) (do
+				pl <- poolLagging pool
+				when (ts >= maxStaged) $
+					poolTClear pool pl >> return ()
+				pIdle <- poolIdle pool
+				whenM (poolTClear pool pIdle) $ poolResus pool
+				applog logDebug "Generated getwork work"
+				stageWork work
+				pushCurlEntry ce pool
+				return (pool, False)) (do
+				pool' <- notGetUpstreamWork pool ce
+				return (pool', True))
 
 poolNotHasStratum :: Int -> Int -> Pool -> Work -> IO (Pool, Bool)
 poolNotHasStratum ts maxStaged pool work = do
@@ -101,7 +109,7 @@ undef = undefined
 incGetfailOccasionsAndTotalGo :: Pool -> Bool -> IO ()
 incGetfailOccasionsAndTotalGo cp True = do
 	cpLagging <- poolLagging cp
-	b <- poolTset cp cpLagging
+	b <- poolTSet cp cpLagging
 	when b $ do
 		pn <- poolPoolNo cp
 		applog logWarning $ "Pool " ++ show pn ++

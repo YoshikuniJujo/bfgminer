@@ -38,7 +38,9 @@ module Bfgminerhs.Foreign (
 	popCurlEntry3,
 	curlEntCurl,
 	getUpstreamWork,
-	getUpstreamWorkDone,
+	poolResus,
+	poolIdle,
+	pushCurlEntry,
 
 	cloneAvailable,
 	freeWork,
@@ -61,7 +63,8 @@ module Bfgminerhs.Foreign (
 	getCurrentPool,
 	makeWork,
 
-	poolTset,
+	poolTSet,
+	poolTClear,
 	incPoolGetfailOccasions,
 	incTotalGo,
 	poolLagging,
@@ -92,7 +95,8 @@ data CurlEnt = CurlEnt { getPtrCurlEnt :: Ptr CurlEnt }
 data PThreadMutexT = PThreadMutexT { getPtrPThreadMutexT :: Ptr PThreadMutexT }
 data PBool = PBool (Ptr Bool)
 data PoolProtocol = PlpNone | PlpGetwork | PlpGetblocktemplate deriving Enum
-data BlktemplateT = BlktemplateT { getPtrBlktemplateT :: Ptr BlktemplateT }
+-- data BlktemplateT = BlktemplateT { getPtrBlktemplateT :: Ptr BlktemplateT }
+data BlktemplateT = BlktemplateT (Ptr BlktemplateT)
 data Curl = Curl (Ptr Curl)
 
 fromCArrayFun :: (CInt -> Ptr CString -> IO a) -> [String] -> IO a
@@ -179,7 +183,9 @@ getCurrentPool = Pool <$> cCurrentPool
 
 foreign import ccall "wrap_make_work" cMakeWork :: IO (Ptr Work)
 foreign import ccall "wrap_select_pool" cSelectPool :: Bool -> IO (Ptr Pool)
-foreign import ccall "wrap_pool_tset" cPoolTset ::
+foreign import ccall "wrap_pool_tset" cPoolTSet ::
+	Ptr Pool -> Ptr Bool -> IO Bool
+foreign import ccall "pool_tclear" cPoolTClear ::
 	Ptr Pool -> Ptr Bool -> IO Bool
 foreign import ccall "inc_pool_getfail_occasions" cIncPoolGetfailOccasions ::
 	Ptr Pool -> IO ()
@@ -191,8 +197,9 @@ makeWork :: IO Work
 makeWork = Work <$> cMakeWork
 selectPool :: Bool -> IO Pool
 selectPool = fmap Pool . cSelectPool
-poolTset :: Pool -> PBool -> IO Bool
-poolTset (Pool pp) (PBool pb) = cPoolTset pp pb
+poolTSet, poolTClear :: Pool -> PBool -> IO Bool
+poolTSet (Pool pp) (PBool pb) = cPoolTSet pp pb
+poolTClear (Pool pp) (PBool pb) = cPoolTClear pp pb
 incPoolGetfailOccasions :: Pool -> IO ()
 incPoolGetfailOccasions = cIncPoolGetfailOccasions . getPtrPool
 incTotalGo :: IO ()
@@ -287,12 +294,18 @@ poolLastWorkCopy (Pool pp) = do
 	pw <- cPoolLastWorkCopy pp
 	return $ if pw == nullPtr then Nothing else Just $ Work pw
 
-foreign import ccall "get_upstream_work_done" cGetUpstreamWorkDone ::
-	CInt -> CInt -> Ptr Pool -> Ptr Work -> Ptr CurlEnt -> IO ()
-getUpstreamWorkDone :: Int -> Int -> Pool -> Work -> CurlEnt -> IO ()
-getUpstreamWorkDone ts maxStaged (Pool p) (Work w) (CurlEnt ce) = do
-	b <- cGetUpstreamWorkDone (fromIntegral ts) (fromIntegral maxStaged)p w ce
-	return b
+foreign import ccall "wrap_pool_resus" cPoolResus :: Ptr Pool -> IO ()
+poolResus :: Pool -> IO ()
+poolResus = cPoolResus . getPtrPool
+
+foreign import ccall "pool_idle" cPoolIdle :: Ptr Pool -> IO (Ptr Bool)
+poolIdle :: Pool -> IO PBool
+poolIdle = fmap PBool . cPoolIdle . getPtrPool
+
+foreign import ccall "wrap_push_curl_entry" cPushCurlEntry ::
+	Ptr CurlEnt -> Ptr Pool -> IO ()
+pushCurlEntry :: CurlEnt -> Pool -> IO ()
+pushCurlEntry (CurlEnt pce) (Pool pp) = cPushCurlEntry pce pp
 
 foreign import ccall "wrap_get_upstream_work" cGetUpstreamWork ::
 	Ptr Work -> Ptr Curl -> IO Bool
