@@ -8881,27 +8881,26 @@ before_try_pools_active(int argc, char *argv[], struct thr_info **thr)
 	}
 }
 
-int
-main_initialize(int argc, char *argv[])
-{
-	struct thr_info *thr;
-	int i, j;
-	unsigned int k;
+void after_try_pools_active(struct thr_info *thr);
 
-	before_try_pools_active(argc, argv, &thr);
-	if (opt_benchmark) goto begin_bench;
-	applog(LOG_NOTICE, "Probing for an alive pool");
-	try_pools_active();
-
+void
+main_if_use_scrypt(void) {
 #ifdef USE_SCRYPT
 	if (detect_algo == 1 && !opt_scrypt) {
 		applog(LOG_NOTICE, "Detected scrypt algorithm");
 		opt_scrypt = true;
 	}
 #endif
-	detect_algo = 0;
+}
 
-begin_bench:
+void set_detect_algo(char n) { detect_algo = n; }
+
+void
+after_try_pools_active(struct thr_info *thr)
+{
+	int i, j;
+	unsigned int k;
+
 	total_mhashes_done = 0;
 	for (i = 0; i < total_devices; i++) {
 		struct cgpu_info *cgpu = devices[i];

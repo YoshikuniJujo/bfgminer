@@ -1,5 +1,6 @@
 module Bfgminerhs.Foreign (
 	PoolProtocol(..),
+	Algo(..),
 	PThreadMutexT,
 
 	applog,
@@ -8,7 +9,11 @@ module Bfgminerhs.Foreign (
 	logInfo,
 	logDebug,
 
-	mainInitialize,
+	beforeTryPoolsActive,
+	tryPoolsActive,
+	mainIfUseScrypt,
+	setDetectAlgo,
+	afterTryPoolsActive,
 
 	genStratumWork,
 
@@ -86,8 +91,8 @@ module Bfgminerhs.Foreign (
 import Control.Applicative
 import Foreign.C
 import Foreign.Ptr
-import Foreign.Marshal (allocaArray, pokeArray)
--- import Foreign.Storable
+import Foreign.Marshal (alloca, allocaArray, pokeArray)
+import Foreign.Storable
 -- import Data.Maybe
 	
 data Pool = Pool { getPtrPool :: Ptr Pool } deriving Eq
@@ -100,6 +105,8 @@ data PoolProtocol = PlpNone | PlpGetwork | PlpGetblocktemplate deriving Enum
 -- data BlktemplateT = BlktemplateT { getPtrBlktemplateT :: Ptr BlktemplateT }
 data BlktemplateT = BlktemplateT (Ptr BlktemplateT)
 data Curl = Curl (Ptr Curl)
+data ThrInfo = ThrInfo { getPtrThrInfo :: Ptr ThrInfo }
+data Algo = Algo0 | Algo1 | Algo2 deriving Enum
 
 fromCArrayFun :: (CInt -> Ptr CString -> IO a) -> [String] -> IO a
 fromCArrayFun f args = do
@@ -108,8 +115,30 @@ fromCArrayFun f args = do
 		pokeArray pArgs cArgs
 		f (fromIntegral $ length args) pArgs
 
-mainInitialize :: [String] -> IO ()
-mainInitialize = fromCArrayFun cMainInitialize
+foreign import ccall "before_try_pools_active" cBeforeTryPoolsActive ::
+	CInt -> Ptr CString -> Ptr (Ptr ThrInfo) -> IO ()
+beforeTryPoolsActive :: [String] -> IO ThrInfo
+beforeTryPoolsActive args = alloca $ \pthr -> do
+	fromCArrayFun (\argc argv -> cBeforeTryPoolsActive argc argv pthr) args
+	thr' <- peek pthr
+	return $ ThrInfo thr'
+
+foreign import ccall "try_pools_active" cTryPoolsActive :: IO ()
+tryPoolsActive :: IO ()
+tryPoolsActive = cTryPoolsActive
+
+foreign import ccall "main_if_use_scrypt" cMainIfUseScrypt :: IO ()
+mainIfUseScrypt :: IO ()
+mainIfUseScrypt = cMainIfUseScrypt
+
+foreign import ccall "set_detect_algo" cSetDetectAlgo :: CChar -> IO ()
+setDetectAlgo :: Algo -> IO ()
+setDetectAlgo = cSetDetectAlgo . fromIntegral . fromEnum
+
+foreign import ccall "after_try_pools_active" cAfterTryPoolsActive ::
+	Ptr ThrInfo -> IO ()
+afterTryPoolsActive :: ThrInfo -> IO ()
+afterTryPoolsActive = cAfterTryPoolsActive . getPtrThrInfo
 
 foreign import ccall "applog" cApplog :: CInt -> CString -> IO ()
 
@@ -142,9 +171,6 @@ quit :: Int -> String -> IO ()
 quit n msg = cQuit (fromIntegral n) =<< newCString msg
 getTotalControlThreads :: IO Int
 getTotalControlThreads = fromIntegral <$> cGetTotalControlThreads
-
-foreign import ccall "main_initialize" cMainInitialize ::
-	CInt -> Ptr CString -> IO ()
 
 foreign import ccall "get_stgd_lock" cGetStgdLock :: IO (Ptr PThreadMutexT)
 foreign import ccall "current_pool" cCurrentPool :: IO (Ptr Pool)

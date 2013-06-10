@@ -171,7 +171,13 @@ main = do
 	r <- curlGlobalInit curlGlobalAll
 	when (r /= 0) $ quit 1 "curl initialize error"
 
-	mainInitialize =<< (:) <$> getProgName <*> getArgs
+	thr <- beforeTryPoolsActive =<< (:) <$> getProgName <*> getArgs
+	unlessM getOptBenchmark $ do
+		applog logNotice "Probing for an alive pool"
+		tryPoolsActive
+		mainIfUseScrypt
+		setDetectAlgo Algo0
+	afterTryPoolsActive thr
 
 	tct <- getTotalControlThreads
 	when (tct /= 7) $ quit 1 "bad total control threads"
