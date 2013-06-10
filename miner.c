@@ -8410,13 +8410,57 @@ static void raise_fd_limits(void)
 
 int curl_global_all() { return CURL_GLOBAL_ALL; }
 
-int main_initialize(int argc, char *argv[])
+void
+try_pools_active(void) {
+	do {
+		int slept = 0;
+
+		/* Look for at least one active pool before starting */
+		probe_pools();
+		do {
+			sleep(1);
+			slept++;
+		} while (!pools_active && slept < 60);
+
+		if (!pools_active) {
+			applog(LOG_ERR, "No servers were found that could be "
+				"used to get work from.");
+			applog(LOG_ERR, "Please check the details from the "
+				"list below of the servers you have input");
+			applog(LOG_ERR, "Most likely you have input the wrong "
+				"URL, forgotten to add a port, or have not set "
+				"up workers");
+			for (int i = 0; i < total_pools; i++) {
+				struct pool *pool;
+
+				pool = pools[i];
+				applog(LOG_WARNING, "Pool: %d  URL: %s  "
+						"User: %s  Password: %s",
+					i, pool->rpc_url, pool->rpc_user,
+					pool->rpc_pass);
+			}
+#ifdef HAVE_CURSES
+			if (use_curses) {
+				halfdelay(150);
+				applog(LOG_ERR, "Press any key to exit, "
+				"or BFGMiner will try again in 15s.");
+				if (getch() != ERR)
+					quit(0, "No servers could be used! Exiting.");
+				cbreak();
+			} else
+#endif
+				quit(0, "No servers could be used! Exiting.");
+		}
+	} while (!pools_active);
+}
+
+void
+before_try_pools_active(int argc, char *argv[], struct thr_info **thr)
 {
 	struct sigaction handler;
-	struct thr_info *thr;
 	struct block *block;
-	unsigned int k;
-	int i, j;
+//	unsigned int k;
+	int i;
 	char *s;
 
 	blkmk_sha256_impl = my_blkmaker_sha256_callback;
@@ -8793,30 +8837,30 @@ int main_initialize(int argc, char *argv[])
 			fork_monitor();
 	#endif // defined(unix)
 
-	mining_thr = calloc(mining_threads, sizeof(thr));
+	mining_thr = calloc(mining_threads, sizeof(*thr));
 	if (!mining_thr)
 		quit(1, "Failed to calloc mining_thr");
 	for (i = 0; i < mining_threads; i++) {
-		mining_thr[i] = calloc(1, sizeof(*thr));
+		mining_thr[i] = calloc(1, sizeof(**thr));
 		if (!mining_thr[i])
 			quit(1, "Failed to calloc mining_thr[%d]", i);
 	}
 
 	total_control_threads = 7;
-	control_thr = calloc(total_control_threads, sizeof(*thr));
+	control_thr = calloc(total_control_threads, sizeof(**thr));
 	if (!control_thr)
 		quit(1, "Failed to calloc control_thr");
 
 	gwsched_thr_id = 0;
 	stage_thr_id = 1;
-	thr = &control_thr[stage_thr_id];
-	thr->q = tq_new();
-	if (!thr->q)
+	*thr = &control_thr[stage_thr_id];
+	(*thr)->q = tq_new();
+	if (!(*thr)->q)
 		quit(1, "Failed to tq_new");
 	/* start stage thread */
-	if (thr_info_create(thr, NULL, stage_thread, thr))
+	if (thr_info_create(*thr, NULL, stage_thread, *thr))
 		quit(1, "stage thread create failed");
-	pthread_detach(thr->pth);
+	pthread_detach((*thr)->pth);
 
 	/* Create a unique get work queue */
 	getq = tq_new();
@@ -8825,57 +8869,29 @@ int main_initialize(int argc, char *argv[])
 	/* We use the getq mutex as the staged lock */
 	stgd_lock = &getq->mutex;
 
-	if (opt_benchmark)
-		goto begin_bench;
+	if (opt_benchmark) {
+//		goto begin_bench;
+	} else {
+		for (i = 0; i < total_pools; i++) {
+			struct pool *pool  = pools[i];
 
-	for (i = 0; i < total_pools; i++) {
-		struct pool *pool  = pools[i];
-
-		enable_pool(pool);
-		pool->idle = true;
-	}
-
-	applog(LOG_NOTICE, "Probing for an alive pool");
-	do {
-		int slept = 0;
-
-		/* Look for at least one active pool before starting */
-		probe_pools();
-		do {
-			sleep(1);
-			slept++;
-		} while (!pools_active && slept < 60);
-
-		if (!pools_active) {
-			applog(LOG_ERR, "No servers were found that could be "
-				"used to get work from.");
-			applog(LOG_ERR, "Please check the details from the "
-				"list below of the servers you have input");
-			applog(LOG_ERR, "Most likely you have input the wrong "
-				"URL, forgotten to add a port, or have not set "
-				"up workers");
-			for (i = 0; i < total_pools; i++) {
-				struct pool *pool;
-
-				pool = pools[i];
-				applog(LOG_WARNING, "Pool: %d  URL: %s  "
-						"User: %s  Password: %s",
-					i, pool->rpc_url, pool->rpc_user,
-					pool->rpc_pass);
-			}
-#ifdef HAVE_CURSES
-			if (use_curses) {
-				halfdelay(150);
-				applog(LOG_ERR, "Press any key to exit, "
-				"or BFGMiner will try again in 15s.");
-				if (getch() != ERR)
-					quit(0, "No servers could be used! Exiting.");
-				cbreak();
-			} else
-#endif
-				quit(0, "No servers could be used! Exiting.");
+			enable_pool(pool);
+			pool->idle = true;
 		}
-	} while (!pools_active);
+	}
+}
+
+int
+main_initialize(int argc, char *argv[])
+{
+	struct thr_info *thr;
+	int i, j;
+	unsigned int k;
+
+	before_try_pools_active(argc, argv, &thr);
+	if (opt_benchmark) goto begin_bench;
+	applog(LOG_NOTICE, "Probing for an alive pool");
+	try_pools_active();
 
 #ifdef USE_SCRYPT
 	if (detect_algo == 1 && !opt_scrypt) {
