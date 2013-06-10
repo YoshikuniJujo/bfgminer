@@ -39,7 +39,22 @@ notShouldRollBody ts maxStaged pool work = do
 				stageWork work
 				pushCurlEntry ce pool
 				return (pool, False)) (do
-				pool' <- notGetUpstreamWork pool ce
+				-- Make sure the pool just hasn't stopped serving
+				-- requests but is up as we'll keep hammering it
+				pushCurlEntry ce pool
+				poolIncSeqGetfails pool
+				poolDied pool
+				optFailOnly <- getOptFailOnly
+				pool' <- selectPool $ not optFailOnly
+				pn <- poolPoolNo pool
+				if pool == pool' then do
+					applog logDebug $ "Pool " ++ show pn ++
+						" json_rpc_call failed on get " ++
+						"work, retrying in 5s"
+					threadDelay 5000000
+				else do	applog logDebug $ "Pool " ++ show pn ++
+						" json_rpc_call failed on get " ++
+						"work, failover activated"
 				return (pool', True))
 
 poolNotHasStratum :: Int -> Int -> Pool -> Work -> IO (Pool, Bool)

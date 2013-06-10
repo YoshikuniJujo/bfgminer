@@ -9084,38 +9084,5 @@ void wrap_pool_resus(struct pool *pool) { pool_resus(pool); }
 bool* pool_idle(struct pool *pool) { return &pool->idle; }
 void wrap_push_curl_entry(struct curl_ent *ce, struct pool *pool) {
 	push_curl_entry(ce, pool); }
-
-/*
-void
-get_upstream_work_done(
-	struct pool *pool, struct work *work, struct curl_ent *ce)
-{
-	applog(LOG_DEBUG, "Generated getwork work");
-	stage_work(work);
-	push_curl_entry(ce, pool);
-}
-*/
-
-void
-not_get_upstream_work(struct pool **pool, struct curl_ent *ce)
-{
-	struct pool *next_pool;
-
-	/* Make sure the pool just hasn't stopped serving
-	* requests but is up as we'll keep hammering it */
-	push_curl_entry(ce, *pool);
-	++(*pool)->seq_getfails;
-	pool_died(*pool);
-	next_pool = select_pool(!opt_fail_only);
-	if (*pool == next_pool) {
-		applog(LOG_DEBUG,
-			"Pool %d json_rpc_call failed on get work, "
-			"retrying in 5s", (*pool)->pool_no);
-		nmsleep(5000);
-	} else {
-		applog(LOG_DEBUG,
-			"Pool %d json_rpc_call failed on get work, "
-			"failover activated", (*pool)->pool_no);
-		*pool = next_pool;
-	}
-}
+void pool_inc_seq_getfails(struct pool *pool) { ++pool->seq_getfails; }
+void wrap_pool_died(struct pool *pool) { pool_died(pool); }

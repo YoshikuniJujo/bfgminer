@@ -47,7 +47,9 @@ module Bfgminerhs.Foreign (
 	stageWork,
 	getBenchmarkWork,
 	getOptBenchmark,
-	notGetUpstreamWork,
+
+	poolIncSeqGetfails,
+	poolDied,
 
 	poolProto,
 	plpGetblocktemplate,
@@ -84,8 +86,8 @@ module Bfgminerhs.Foreign (
 import Control.Applicative
 import Foreign.C
 import Foreign.Ptr
-import Foreign.Marshal (alloca, allocaArray, pokeArray)
-import Foreign.Storable
+import Foreign.Marshal (allocaArray, pokeArray)
+-- import Foreign.Storable
 -- import Data.Maybe
 	
 data Pool = Pool { getPtrPool :: Ptr Pool } deriving Eq
@@ -330,8 +332,16 @@ foreign import ccall "free_work" cFreeWork :: Ptr Work -> IO ()
 foreign import ccall "wrap_get_benchmark_work" cGetBenchmarkWork :: Ptr Work -> IO ()
 foreign import ccall "wrap_stage_work" cStageWork :: Ptr Work -> IO ()
 foreign import ccall "get_opt_benchmark" cGetOptBenchmark :: IO Bool
-foreign import ccall "not_get_upstream_work" cNotGetUpstreamWork ::
-	Ptr (Ptr Pool) -> Ptr CurlEnt -> IO ()
+
+foreign import ccall "pool_inc_seq_getfails" cPoolIncSeqGetfails ::
+	Ptr Pool -> IO ()
+poolIncSeqGetfails :: Pool -> IO ()
+poolIncSeqGetfails = cPoolIncSeqGetfails . getPtrPool
+
+foreign import ccall "wrap_pool_died" cPoolDied :: Ptr Pool -> IO ()
+poolDied :: Pool -> IO ()
+poolDied = cPoolDied . getPtrPool
+
 cloneAvailable, getOptBenchmark :: IO Bool
 cloneAvailable = cCloneAvailable
 freeWork, getBenchmarkWork, stageWork :: Work -> IO ()
@@ -340,13 +350,6 @@ getBenchmarkWork = cGetBenchmarkWork . getPtrWork
 stageWork = cStageWork . getPtrWork
 
 getOptBenchmark = cGetOptBenchmark
-
-notGetUpstreamWork :: Pool -> CurlEnt -> IO Pool
-notGetUpstreamWork (Pool p) (CurlEnt ce) = alloca $ \pp -> do
-	poke pp p
-	cNotGetUpstreamWork pp ce
-	p' <- peek pp
-	return $ Pool p'
 
 foreign import ccall "get_opt_queue" cGetOptQueue :: IO CInt
 getOptQueue :: IO Int
