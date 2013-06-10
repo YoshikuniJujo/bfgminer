@@ -1,3 +1,11 @@
+BFGMinerHs:
+
+INSTALL:
+./autogen.sh
+./configure --enable-cpumining
+patch < Makefile.patch
+make bfgminerhs
+
 BFGMiner:
 St. Barbara's Faithfully Glorified Mining Initiative Naturally Exceeding Rivals
 or Basically a Freaking Good Miner
