@@ -1,0 +1,54 @@
+*** Makefile	2013-06-10 11:02:01.970641833 +0900
+--- /home/tatsuya/phd01_black/tests/autoreconf/bfgminerhs/bfgminer2/Makefile	2013-06-10 10:55:51.093625285 +0900
+***************
+*** 185,190 ****
+--- 185,192 ----
+  #am__DEPENDENCIES_2 = $(am__DEPENDENCIES_1)
+  bfgminer_LINK = $(CCLD) $(AM_CFLAGS) $(CFLAGS) $(bfgminer_LDFLAGS) \
+  	$(LDFLAGS) -o $@
++ bfgminer_LINK_hs = ghc $(AM_CFLAGS) $(CFLAGS_hs) $(bfgminer_LDFLAGS_hs) \
++ 	$(LDFLAGS) -o $@
+  am_bfgminer_rpc_OBJECTS = api-example.$(OBJEXT)
+  bfgminer_rpc_OBJECTS = $(am_bfgminer_rpc_OBJECTS)
+  bfgminer_rpc_DEPENDENCIES =
+***************
+*** 340,345 ****
+--- 342,348 ----
+  CC = gcc -std=gnu99
+  CCDEPMODE = depmode=gcc3
+  CFLAGS = -g -O2
++ CFLAGS_hs = -O2
+  CPP = gcc -E
+  CPPFLAGS = 
+  CYGPATH_W = echo
+***************
+*** 591,596 ****
+--- 594,600 ----
+  INCLUDES = -fno-strict-aliasing
+  bin_SCRIPTS = $(top_srcdir)/*.cl
+  bfgminer_LDFLAGS = $(PTHREAD_FLAGS) $(libblkmaker_LDFLAGS)
++ bfgminer_LDFLAGS_hs = $(libblkmaker_LDFLAGS)
+  bfgminer_LDADD = $(DLOPEN_FLAGS) -lcurl   -ljansson   \
+  	 -lpthread -L/usr/lib -lncursesw   \
+  	-ludev   -lm lib/libgnu.a \
+***************
+*** 729,734 ****
+--- 733,750 ----
+  	echo " ( cd '$(DESTDIR)$(bindir)' && rm -f" $$files ")"; \
+  	cd "$(DESTDIR)$(bindir)" && rm -f $$files
+  
++ bfgminerhs: bfgminerhs.hs Bfgminerhs/Foreign.hs Bfgminerhs/Tools.hs \
++ 	$(bfgminer_OBJECTS) $(bfgminer_DEPENDENCIES) \
++ 	$(EXTRA_bfgminer_DEPENDENCIES) 
++ 	@rm -f bfgminerhs
++ 	cd x86_32/ && make libx8632.a && cd ..
++ 	cd lib/ && make libgnu.a && cd ..
++ 	cd ccan/ && make libccan.a && cd ..
++ 	make libsse2cpuminer.a
++ 	cd libblkmaker/ && make && cd ..
++ 	$(AM_V_CCLD)$(bfgminer_LINK_hs) -Wall bfgminerhs.hs $(bfgminer_OBJECTS) \
++ 		$(bfgminer_LDADD) $(LIBS)
++ 
+  clean-binPROGRAMS:
+  	-test -z "$(bin_PROGRAMS)" || rm -f $(bin_PROGRAMS)
+  bfgminer$(EXEEXT): $(bfgminer_OBJECTS) $(bfgminer_DEPENDENCIES) $(EXTRA_bfgminer_DEPENDENCIES) 
