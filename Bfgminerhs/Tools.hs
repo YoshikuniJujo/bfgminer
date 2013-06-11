@@ -8,7 +8,8 @@ module Bfgminerhs.Tools (
 	whenM,
 	unlessM,
 	getCharTimeout,
-	waitFor
+	waitFor,
+	forI
 ) where
 
 import Control.Monad(when, unless)
@@ -78,3 +79,9 @@ waitFor sec p = do
 		killThread pt
 		writeChan chan ()
 	readChan chan
+
+forI :: Monad m => Int -> [a] -> (Int -> a -> m b) -> m ()
+forI _ [] _ = return ()
+forI i (x : xs) action = do
+	_ <- action i x
+	forI (i + 1) xs action

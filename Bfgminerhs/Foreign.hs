@@ -13,6 +13,11 @@ module Bfgminerhs.Foreign (
 	beforeTryPoolsActive,
 
 	tryPoolsActive,
+	getPools,
+	poolRpcUrl,
+	poolRpcUser,
+	poolRpcPass,
+
 	probePools,
 	getPoolsActive,
 	mainIfUseScrypt,
@@ -96,7 +101,7 @@ module Bfgminerhs.Foreign (
 import Control.Applicative
 import Foreign.C
 import Foreign.Ptr
-import Foreign.Marshal (alloca, allocaArray, pokeArray)
+import Foreign.Marshal (alloca, allocaArray, pokeArray, peekArray)
 import Foreign.Storable
 -- import Data.Maybe
 	
@@ -137,6 +142,22 @@ probePools = cProbePools
 foreign import ccall "get_pools_active" cGetPoolsActive :: IO Bool
 getPoolsActive :: IO Bool
 getPoolsActive = cGetPoolsActive
+
+foreign import ccall "get_pools" cGetPools :: IO (Ptr (Ptr Pool))
+foreign import ccall "get_total_pools" cGetTotalPools :: IO CInt
+getPools :: IO [Pool]
+getPools = do
+	ps <- cGetPools
+	tp <- cGetTotalPools
+	map Pool <$> peekArray (fromIntegral tp) ps
+
+foreign import ccall "pool_rpc_url" cPoolRpcUrl :: Ptr Pool -> IO CString
+foreign import ccall "pool_rpc_user" cPoolRpcUser :: Ptr Pool -> IO CString
+foreign import ccall "pool_rpc_pass" cPoolRpcPass :: Ptr Pool -> IO CString
+poolRpcUrl, poolRpcUser, poolRpcPass :: Pool -> IO String
+poolRpcUrl = (peekCString =<<) . cPoolRpcUrl . getPtrPool
+poolRpcUser = (peekCString =<<) . cPoolRpcUser . getPtrPool
+poolRpcPass = (peekCString =<<) . cPoolRpcPass . getPtrPool
 
 foreign import ccall "main_if_use_scrypt" cMainIfUseScrypt :: IO ()
 mainIfUseScrypt :: IO ()

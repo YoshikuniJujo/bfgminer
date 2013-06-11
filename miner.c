@@ -8841,18 +8841,12 @@ bool get_pools_active(void) { return pools_active; }
 
 struct pool** get_pools(void) { return pools; }
 int get_total_pools(void) { return total_pools; }
+char* pool_rpc_url(struct pool *pool) { return pool->rpc_url; }
+char* pool_rpc_user(struct pool *pool) { return pool->rpc_user; }
+char* pool_rpc_pass(struct pool *pool) { return pool->rpc_pass; }
 
 void
 try_pools_active(void) {
-	for (int i = 0; i < total_pools; i++) {
-		struct pool *pool;
-
-		pool = pools[i];
-		applog(LOG_WARNING, "Pool: %d  URL: %s  "
-				"User: %s  Password: %s",
-			i, pool->rpc_url, pool->rpc_user,
-			pool->rpc_pass);
-	}
 #ifdef HAVE_CURSES
 	if (use_curses) {
 		applog(LOG_ERR, "Press any key to exit, "

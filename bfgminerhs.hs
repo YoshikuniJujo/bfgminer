@@ -188,6 +188,15 @@ main = do
 				applog logErr $ "Most likely you have input " ++
 					"the wrong URL, forgotten to add a " ++
 					"port, or have not set up workers"
+				pools <- getPools
+				forI 0 pools $ \i pool -> do
+					url <- poolRpcUrl pool
+					user <- poolRpcUser pool
+					pass <- poolRpcPass pool
+					applog logErr $ "Pool: " ++ show i ++
+						" URL: " ++ url ++
+						" User: " ++ user ++
+						" Password: " ++ pass
 				tryPoolsActive
 				c <- getCharTimeout 2
 				case c of
