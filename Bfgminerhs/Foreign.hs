@@ -4,15 +4,20 @@ module Bfgminerhs.Foreign (
 	PThreadMutexT,
 
 	applog,
+	logErr,
 	logWarning,
 	logNotice,
 	logInfo,
 	logDebug,
 
 	beforeTryPoolsActive,
+
 	tryPoolsActive,
+	probePools,
+	getPoolsActive,
 	mainIfUseScrypt,
 	setDetectAlgo,
+
 	afterTryPoolsActive,
 
 	genStratumWork,
@@ -126,6 +131,12 @@ beforeTryPoolsActive args = alloca $ \pthr -> do
 foreign import ccall "try_pools_active" cTryPoolsActive :: IO ()
 tryPoolsActive :: IO ()
 tryPoolsActive = cTryPoolsActive
+foreign import ccall "wrap_probe_pools" cProbePools :: IO ()
+probePools :: IO ()
+probePools = cProbePools
+foreign import ccall "get_pools_active" cGetPoolsActive :: IO Bool
+getPoolsActive :: IO Bool
+getPoolsActive = cGetPoolsActive
 
 foreign import ccall "main_if_use_scrypt" cMainIfUseScrypt :: IO ()
 mainIfUseScrypt :: IO ()
@@ -147,7 +158,8 @@ applog logLevel cont = do
 	cCont <- newCString cont
 	cApplog (fromIntegral logLevel) cCont
 
-logWarning, logNotice, logInfo, logDebug :: Int
+logErr, logWarning, logNotice, logInfo, logDebug :: Int
+logErr = 3
 logWarning = 4
 logNotice = 5
 logInfo = 6

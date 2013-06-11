@@ -174,7 +174,28 @@ main = do
 	thr <- beforeTryPoolsActive =<< (:) <$> getProgName <*> getArgs
 	unlessM getOptBenchmark $ do
 		applog logNotice "Probing for an alive pool"
-		tryPoolsActive
+		doUntil_ $ do
+			-- Look for at least one active pool before starting
+			probePools
+			waitFor 6 getPoolsActive
+			poolsActive <- getPoolsActive
+			if poolsActive then do return True else do
+				applog logErr $ "No servers were found that " ++
+					"could be used to get work from."
+				applog logErr $ "Please check the details " ++
+					"from the list below of the servers " ++
+					"you have input"
+				applog logErr $ "Most likely you have input " ++
+					"the wrong URL, forgotten to add a " ++
+					"port, or have not set up workers"
+				tryPoolsActive
+				c <- getCharTimeout 2
+				case c of
+					Just _ -> do
+						quit 0 $ "No servers could be " ++
+							"used! Exiting."
+					_ -> return ()
+				return False
 		mainIfUseScrypt
 		setDetectAlgo Algo0
 	afterTryPoolsActive thr

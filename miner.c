@@ -8374,7 +8374,8 @@ static void probe_pools(void)
 		struct pool *pool = pools[i];
 
 		pool->testing = true;
-		pthread_create(&pool->test_thread, NULL, test_pool_thread, (void *)pool);
+		pthread_create(&pool->test_thread, NULL, test_pool_thread,
+			(void *)pool);
 	}
 }
 
@@ -8415,7 +8416,6 @@ before_try_pools_active(int argc, char *argv[], struct thr_info **thr)
 {
 	struct sigaction handler;
 	struct block *block;
-//	unsigned int k;
 	int i;
 	char *s;
 
@@ -8836,48 +8836,31 @@ before_try_pools_active(int argc, char *argv[], struct thr_info **thr)
 	}
 }
 
+void wrap_probe_pools(void) { probe_pools(); }
+bool get_pools_active(void) { return pools_active; }
+
+struct pool** get_pools(void) { return pools; }
+int get_total_pools(void) { return total_pools; }
+
 void
 try_pools_active(void) {
-	do {
-		int slept = 0;
+	for (int i = 0; i < total_pools; i++) {
+		struct pool *pool;
 
-		/* Look for at least one active pool before starting */
-		probe_pools();
-		do {
-			sleep(1);
-			slept++;
-		} while (!pools_active && slept < 60);
-
-		if (!pools_active) {
-			applog(LOG_ERR, "No servers were found that could be "
-				"used to get work from.");
-			applog(LOG_ERR, "Please check the details from the "
-				"list below of the servers you have input");
-			applog(LOG_ERR, "Most likely you have input the wrong "
-				"URL, forgotten to add a port, or have not set "
-				"up workers");
-			for (int i = 0; i < total_pools; i++) {
-				struct pool *pool;
-
-				pool = pools[i];
-				applog(LOG_WARNING, "Pool: %d  URL: %s  "
-						"User: %s  Password: %s",
-					i, pool->rpc_url, pool->rpc_user,
-					pool->rpc_pass);
-			}
+		pool = pools[i];
+		applog(LOG_WARNING, "Pool: %d  URL: %s  "
+				"User: %s  Password: %s",
+			i, pool->rpc_url, pool->rpc_user,
+			pool->rpc_pass);
+	}
 #ifdef HAVE_CURSES
-			if (use_curses) {
-				halfdelay(150);
-				applog(LOG_ERR, "Press any key to exit, "
-				"or BFGMiner will try again in 15s.");
-				if (getch() != ERR)
-					quit(0, "No servers could be used! Exiting.");
-				cbreak();
-			} else
+	if (use_curses) {
+		applog(LOG_ERR, "Press any key to exit, "
+			"or BFGMiner will try again in 15s.");
+//		cbreak();
+	} else
 #endif
-				quit(0, "No servers could be used! Exiting.");
-		}
-	} while (!pools_active);
+		quit(0, "No servers could be used! Exiting.");
 }
 
 void

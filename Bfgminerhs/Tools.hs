@@ -1,13 +1,18 @@
 module Bfgminerhs.Tools (
 	loop,
 	doWhile,
+	doUntil,
+	doUntil_,
 	while,
 	ifM,
 	whenM,
-	unlessM
+	unlessM,
+	getCharTimeout,
+	waitFor
 ) where
 
 import Control.Monad(when, unless)
+import Control.Concurrent
 
 loop :: Monad m => a -> (a -> m a) -> m a
 loop x act = do
@@ -18,6 +23,16 @@ doWhile :: Monad m => a -> (a -> m (a, Bool)) -> m a
 doWhile x0 action = do
 	(x1, b) <- action x0
 	if b then doWhile x1 action else return x1
+
+doUntil :: Monad m => a -> (a -> m (a, Bool)) -> m a
+doUntil x0 action = do
+	(x1, b) <- action x0
+	if b then return x1 else doWhile x1 action
+
+doUntil_ :: Monad m => m Bool -> m ()
+doUntil_ action = do
+	b <- action
+	unless b $ doUntil_ action
 
 while :: Monad m => a -> (a -> m Bool) -> (a -> m a) -> m a
 while x0 p action = do
@@ -41,3 +56,25 @@ unlessM :: Monad m => m Bool -> m a -> m ()
 unlessM p e = do
 	b <- p
 	unless b $ e >> return ()
+
+getCharTimeout :: Int -> IO (Maybe Char)
+getCharTimeout wait = do
+	chan <- newChan
+	inputThread <- forkIO $ writeChan chan . Just =<< getChar
+	_ <- forkIO $ do
+		threadDelay (wait * 1000000)
+		writeChan chan Nothing
+		killThread inputThread
+	readChan chan
+
+waitFor :: Int -> IO Bool -> IO ()
+waitFor sec p = do
+	chan <- newChan
+	pt <- forkIO $ do
+		doUntil_ $ threadDelay 100000 >> p
+		writeChan chan ()
+	_ <- forkIO $ do
+		threadDelay $ sec * 1000000
+		killThread pt
+		writeChan chan ()
+	readChan chan
