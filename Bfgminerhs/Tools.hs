@@ -63,7 +63,7 @@ getCharTimeout wait = do
 	chan <- newChan
 	inputThread <- forkIO $ writeChan chan . Just =<< getChar
 	_ <- forkIO $ do
-		threadDelay (wait * 1000000)
+		threadDelay (wait * 1000)
 		writeChan chan Nothing
 		killThread inputThread
 	readChan chan
@@ -72,10 +72,10 @@ waitFor :: Int -> IO Bool -> IO ()
 waitFor sec p = do
 	chan <- newChan
 	pt <- forkIO $ do
-		doUntil_ $ threadDelay 100000 >> p
+		doUntil_ $ threadDelay 100 >> p
 		writeChan chan ()
 	_ <- forkIO $ do
-		threadDelay $ sec * 1000000
+		threadDelay $ sec * 1000
 		killThread pt
 		writeChan chan ()
 	readChan chan

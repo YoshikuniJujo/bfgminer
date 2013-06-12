@@ -182,7 +182,7 @@ main = do
 		doUntil_ $ do
 			-- Look for at least one active pool before starting
 			probePools
-			waitFor 6 getPoolsActive
+			waitFor 1000 getPoolsActive
 			poolsActive <- getPoolsActive
 			if poolsActive then do return True else do
 				applog logErr $ "No servers were found that " ++
@@ -203,7 +203,7 @@ main = do
 						" User: " ++ user ++
 						" Password: " ++ pass
 				tryPoolsActive
-				c <- getCharTimeout 2
+				c <- getCharTimeout 1000
 				case c of
 					Just _ -> do
 						quit 0 $ "No servers could be " ++
