@@ -46,9 +46,9 @@
 + 	cd ccan/ && make libccan.a && cd ..
 + 	make libsse2cpuminer.a
 + 	cd libblkmaker/ && make && cd ..
-+	ghc -c bfgminerhs.hs Bfgminerhs/Foreign.hs Bfgminerhs/Tools.hs
-+ 	$(AM_V_CCLD)$(bfgminer_LINK_hs) -Wall bfgminerhs.o Bfgminer/Foreign.o \
-+	Bfgminer/Tools.o $(bfgminer_OBJECTS) $(bfgminer_LDADD) $(LIBS)
++ 	ghc -c Bfgminerhs/Foreign.hs Bfgminerhs/Tools.hs bfgminerhs.hs
++ 	$(AM_V_CCLD)$(bfgminer_LINK_hs) -Wall bfgminerhs.o Bfgminerhs/Foreign.o \
++ 	Bfgminerhs/Tools.o $(bfgminer_OBJECTS) $(bfgminer_LDADD) $(LIBS)
 + 
   clean-binPROGRAMS:
   	-test -z "$(bin_PROGRAMS)" || rm -f $(bin_PROGRAMS)
