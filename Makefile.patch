@@ -33,7 +33,7 @@
   	-ludev   -lm lib/libgnu.a \
 ***************
 *** 729,734 ****
---- 733,750 ----
+--- 733,751 ----
   	echo " ( cd '$(DESTDIR)$(bindir)' && rm -f" $$files ")"; \
   	cd "$(DESTDIR)$(bindir)" && rm -f $$files
   
@@ -46,8 +46,9 @@
 + 	cd ccan/ && make libccan.a && cd ..
 + 	make libsse2cpuminer.a
 + 	cd libblkmaker/ && make && cd ..
-+ 	$(AM_V_CCLD)$(bfgminer_LINK_hs) -Wall bfgminerhs.hs $(bfgminer_OBJECTS) \
-+ 		$(bfgminer_LDADD) $(LIBS)
++	ghc -c bfgminerhs.hs Bfgminerhs/Foreign.hs Bfgminerhs/Tools.hs
++ 	$(AM_V_CCLD)$(bfgminer_LINK_hs) -Wall bfgminerhs.o Bfgminer/Foreign.o \
++	Bfgminer/Tools.o $(bfgminer_OBJECTS) $(bfgminer_LDADD) $(LIBS)
 + 
   clean-binPROGRAMS:
   	-test -z "$(bin_PROGRAMS)" || rm -f $(bin_PROGRAMS)
