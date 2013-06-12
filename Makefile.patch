@@ -33,7 +33,7 @@
   	-ludev   -lm lib/libgnu.a \
 ***************
 *** 729,734 ****
---- 733,751 ----
+--- 733,753 ----
   	echo " ( cd '$(DESTDIR)$(bindir)' && rm -f" $$files ")"; \
   	cd "$(DESTDIR)$(bindir)" && rm -f $$files
   
@@ -41,12 +41,14 @@
 + 	$(bfgminer_OBJECTS) $(bfgminer_DEPENDENCIES) \
 + 	$(EXTRA_bfgminer_DEPENDENCIES) 
 + 	@rm -f bfgminerhs
++ 	gcc -o makeHsConfig makeHsConfig.c
++ 	./makeHsConfig > Bfgminerhs/Config.hs
 + 	cd x86_32/ && make libx8632.a && cd ..
 + 	cd lib/ && make libgnu.a && cd ..
 + 	cd ccan/ && make libccan.a && cd ..
 + 	make libsse2cpuminer.a
 + 	cd libblkmaker/ && make && cd ..
-+ 	ghc -c Bfgminerhs/Foreign.hs Bfgminerhs/Tools.hs bfgminerhs.hs
++ 	ghc -c Bfgminerhs/Config.hs Bfgminerhs/Foreign.hs Bfgminerhs/Tools.hs bfgminerhs.hs
 + 	$(AM_V_CCLD)$(bfgminer_LINK_hs) -Wall bfgminerhs.o Bfgminerhs/Foreign.o \
 + 	Bfgminerhs/Tools.o $(bfgminer_OBJECTS) $(bfgminer_LDADD) $(LIBS)
 + 

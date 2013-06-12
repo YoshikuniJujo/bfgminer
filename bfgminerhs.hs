@@ -1,14 +1,19 @@
-{-# LANGUAGE OverloadedStrings, TupleSections #-}
+{-# LANGUAGE OverloadedStrings, TupleSections, TemplateHaskell #-}
 
 module Main where
 
 import Bfgminerhs.Foreign
 import Bfgminerhs.Tools
+import Bfgminerhs.Config
 
 import System.Environment (getProgName, getArgs)
 import Control.Concurrent (threadDelay)
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad (when)
+
+import Language.Haskell.TH
+
+runIO $ putStrLn ("have curses? " ++ show configHaveCurses) >> return []
 
 notShouldRollBody :: Int -> Int -> Pool -> Work -> IO (Pool, Bool)
 notShouldRollBody ts maxStaged pool work = do

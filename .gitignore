@@ -66,3 +66,5 @@ core*
 /bfgminerhs
 /bfgminerhs.hi
 *.hi
+/Bfgminerhs/Config.hs
+/makeHsConfig
